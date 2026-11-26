@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -103,9 +104,31 @@ def start_pipeline():
     ids = [p["pipeline_id"] for p in found.get("statuses", []) if p.get("name") == PIPELINE]
     if not ids:
         raise RuntimeError(f"pipeline {PIPELINE} not found; apply infra/databricks first")
-    http.request("POST", f"{_host()}/api/2.0/pipelines/{ids[0]}/updates", data=b"{}",
-                 headers=dict(_auth(), **{"Content-Type": "application/json"}), log_url="databricks start update")
-    return ids[0]
+    started = json.loads(http.request("POST", f"{_host()}/api/2.0/pipelines/{ids[0]}/updates", data=b"{}",
+                                      headers=dict(_auth(), **{"Content-Type": "application/json"}),
+                                      log_url="databricks start update"))
+    return ids[0], started.get("update_id")
+
+
+def wait(pipeline_id, update_id, sleep=time.sleep, every=20, limit=60):
+    """Poll the update until it ends (at most limit x every seconds); return its state and error messages."""
+    state = None
+    for _ in range(limit):
+        reply = json.loads(http.request("GET", f"{_host()}/api/2.0/pipelines/{pipeline_id}/updates/{update_id}",
+                                        headers=_auth(), log_url="databricks update state"))
+        state = (reply.get("update") or {}).get("state")
+        if state in ("COMPLETED", "FAILED", "CANCELED"):
+            break
+        sleep(every)
+    errors = []
+    if state != "COMPLETED":
+        query = urllib.parse.urlencode({"filter": "level='ERROR'", "max_results": 10})
+        events = json.loads(http.request("GET", f"{_host()}/api/2.0/pipelines/{pipeline_id}/events?{query}",
+                                         headers=_auth(), log_url="databricks events"))
+        for e in events.get("events", []):
+            detail = "; ".join(x.get("message", "") for x in (e.get("error") or {}).get("exceptions", []))
+            errors.append(f"{e.get('message', '')}: {detail}"[:1000])
+    return state, errors
 
 
 def run(today, store=None, put=upload, back_days=3):
@@ -127,5 +150,12 @@ def run(today, store=None, put=upload, back_days=3):
 
 if __name__ == "__main__":
     files = run(datetime.now(IST).date())
-    # nothing new: no pipeline run (it costs the Free Edition's daily compute)
-    print(json.dumps({"uploaded": len(files), "pipeline": start_pipeline() if files else None}))
+    print(json.dumps({"uploaded": len(files)}))
+    if files or os.environ.get("UPX_FORCE_PIPELINE") == "true":  # nothing new: no run (Free Edition compute)
+        pid, uid = start_pipeline()
+        state, errors = wait(pid, uid)
+        print(json.dumps({"pipeline": pid, "update": uid, "state": state}))
+        for err in errors:
+            print("ERROR", err)
+        if state != "COMPLETED":
+            raise SystemExit(f"pipeline update {uid} ended {state}")
