@@ -25,8 +25,6 @@ def data_freshness():
                ("NSE deals", "silver.deals", "day")]
     out = None
     for name, tbl, col in sources:
-        if not spark.catalog.tableExists(tbl):  # noqa: F821 - another pipeline that hasn't run yet
-            continue
         row = table(tbl).agg(F.max(col).alias("newest_day")).select(F.lit(name).alias("source"), "newest_day")
         out = row if out is None else out.unionByName(row)
     return out
