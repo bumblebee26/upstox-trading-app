@@ -6,7 +6,9 @@
 #                  roles only with this limit attached, so it can't hand anything more power than this
 locals {
   account_id = data.aws_caller_identity.me.account_id
-  repo       = "bumblebee26/upstox-trading-app"
+  # GitHub names this repo two ways in its sign-in token: by name, and (for repos made after 15 Jul 2026, like
+  # this one) by name plus the permanent owner and repo IDs. Both are allowed, for this repo only.
+  repos = ["bumblebee26/upstox-trading-app", "bumblebee26@47007437/upstox-trading-app@1472118445"]
   boundary   = "arn:aws:iam::${local.account_id}:policy/upx-boundary"
 }
 
@@ -71,7 +73,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.repo}:${each.value}"]
+      values   = [for r in local.repos : "repo:${r}:${each.value}"]
     }
   }
 }
