@@ -1,0 +1,28 @@
+# One-time: copy the old system's NSE, US and macro history files into /Volumes/upx/bronze/history and print
+# an inventory (dummy-money paper trader). Run by hand from the Actions tab; safe to run again.
+name: History copy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copy:
+    name: Copy history (Databricks job upx-history-copy)
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 90
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Run the copy and print its inventory
+        run: python -m lakehouse.jobs upx-history-copy
