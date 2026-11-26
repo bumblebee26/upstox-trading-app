@@ -66,6 +66,7 @@ resource "aws_lambda_function" "kicker" {
   #checkov:skip=CKV_AWS_115:a new account shares 10 concurrent runs, so reserving some can fail; schedules start at most one at a time
   #checkov:skip=CKV_AWS_272:code signing needs AWS Signer, not on the AWS free plan; code comes only from this repo via reviewed merges
   #checkov:skip=CKV_AWS_50:X-Ray is not on the AWS free plan
+  #checkov:skip=CKV_AWS_173:owner OK 27 Nov (free plan only): the settings hold only the bucket name, no secret; AWS encrypts them with its own key
   function_name    = "upx-kicker"
   role             = aws_iam_role.kicker.arn
   runtime          = "python3.13"
