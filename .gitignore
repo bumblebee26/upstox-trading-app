@@ -22,3 +22,5 @@ __pycache__/
 .vscode/
 data/
 infra/aws/build/
+infra/aws/kick.json
+infra/aws/out.json
