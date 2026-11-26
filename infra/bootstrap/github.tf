@@ -8,8 +8,8 @@ locals {
   account_id = data.aws_caller_identity.me.account_id
   # GitHub names this repo two ways in its sign-in token: by name, and (for repos made after 15 Jul 2026, like
   # this one) by name plus the permanent owner and repo IDs. Both are allowed, for this repo only.
-  repos = ["bumblebee26/upstox-trading-app", "bumblebee26@47007437/upstox-trading-app@1472118445"]
-  boundary   = "arn:aws:iam::${local.account_id}:policy/upx-boundary"
+  repos    = ["bumblebee26/upstox-trading-app", "bumblebee26@47007437/upstox-trading-app@1472118445"]
+  boundary = "arn:aws:iam::${local.account_id}:policy/upx-boundary"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {

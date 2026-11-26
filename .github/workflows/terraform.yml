@@ -45,11 +45,6 @@ jobs:
           terraform_version: "1.x"
           terraform_wrapper: false
 
-      - name: Show the sign-in name GitHub sends (temporary, prints no token)
-        run: |
-          curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
-            | python3 -c "import sys,json,base64; t=json.load(sys.stdin)['value'].split('.')[1]; print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['sub'])"
-
       - uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
           role-to-assume: arn:aws:iam::538498973473:role/upx-gha-plan
