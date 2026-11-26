@@ -1,4 +1,6 @@
-# AWS resources for the trader. Applied by the owner from their PC until PR 9 adds plan/apply in CI:
+# AWS resources for the trader. Planned on every pull request and applied by GitHub Actions after a merge to main,
+# once the owner clicks Approve in the "infra" environment (.github/workflows/terraform.yml). The owner can still
+# apply from their PC:
 #   cd infra/aws
 #   terraform init
 #   terraform apply
@@ -13,6 +15,7 @@ data "aws_caller_identity" "me" {}
 
 locals {
   account_id = data.aws_caller_identity.me.account_id
+  boundary   = "arn:aws:iam::${local.account_id}:policy/upx-boundary" # made by infra/bootstrap/github.tf
 }
 
 # Ledgers, journals, plans, the instrument file and the Telegram feed.
@@ -21,10 +24,12 @@ module "state_bucket" {
   bucket_name = "upx-state-${local.account_id}"
 }
 
-# The GitHub Actions trading session signs in as this user (the AWS free plan has no GitHub OIDC).
-# Its access key is created by the owner outside Terraform, so the secret never sits in Terraform state.
+# The GitHub Actions trading session signs in as this user, with an access key the owner created outside
+# Terraform, so the secret never sits in Terraform state.
 resource "aws_iam_user" "session" {
-  name = "upx-gha-trader"
+  #checkov:skip=CKV_AWS_273:owner's choice (27 Nov): the session keeps its working access key; a role can replace it later
+  name                 = "upx-gha-trader"
+  permissions_boundary = local.boundary
 }
 
 data "aws_iam_policy_document" "session" {
@@ -56,6 +61,7 @@ data "aws_iam_policy_document" "session" {
 }
 
 resource "aws_iam_user_policy" "session" {
+  #checkov:skip=CKV_AWS_40:the one user above keeps its own policy until a role replaces it
   name   = "upx-gha-trader"
   user   = aws_iam_user.session.name
   policy = data.aws_iam_policy_document.session.json

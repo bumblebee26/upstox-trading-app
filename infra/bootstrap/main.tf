@@ -1,5 +1,6 @@
-# Run once by the owner, from their PC: creates the bucket that holds this repo's Terraform state.
-# Its own state stays on the PC (terraform.tfstate here, not committed); the bucket is protected from deletion.
+# Applied by the owner, from their PC: the bucket that holds this repo's Terraform state (main.tf) and the
+# roles GitHub signs in with (github.tf). Its own state stays on the PC (terraform.tfstate here, not committed);
+# the bucket is protected from deletion. CI never applies this folder.
 #   cd infra/bootstrap
 #   terraform init
 #   terraform apply
