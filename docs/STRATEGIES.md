@@ -2,8 +2,8 @@
 
 Dummy money only; nothing here is investment advice. Every shadow is listed here **before** it is built, with
 exact rules, so results can't be tuned after the fact. Shadows are plain code with no Claude calls. Each one
-keeps its own paper ledger; families and luck lines (PR 8) judge them: "too early" under 100 trades, the
-**pass bar** at 200+ trades above the luck line and still above it in the weeks after.
+keeps its own paper ledger; families and luck lines judge them (section 7): "too early" under 100 trades, the
+**pass bar** at 200+ trades above the luck line and still above it 20 trading days later.
 
 Status: **built** = in code; **PR n** = planned in that pull request.
 
@@ -75,34 +75,34 @@ Exit variants X2-X7 run on the four core entries E02, E04, E05, E09 (24 variants
 
 **Intraday total: 30 + 24 + 12 = 66 variants.**
 
-## 2. Swing (PR 8)
+## 2. Swing (built in PR 8, except S12, S13, S19, S23, S24, S25)
 Common: pool ₹60,000; at most 7 holdings at 25%; buy at the next open, stop checked on closes; Upstox delivery
 charges with the DP charge on sells; idle cash stays cash.
 
 | ID | Name | Rule |
 |---|---|---|
-| S01 | Momentum + news (the old live rules) | Top momentum ranks (trader/rank.py), up for a fresh positive filing; stop 2 ATR, trail 2 ATR under the highest close; out after 20 days |
-| S02 | 52-week-high breakout | Close at a new 52-week high on 1.5x volume; stop 2 ATR; trail 2 ATR |
+| S01 | Momentum (the old live rules) | Top 7 momentum ranks (trader/rank.py); stop 2 ATR, trail 2 ATR under the highest close; out after 20 days. The old boost for a fresh positive filing waits for the NSE filings feed (PR 9) |
+| S02 | 52-week-high breakout | Close at a new 52-week high on 1.5x volume; stop 2 ATR; trail 2 ATR; out after 20 days |
 | S03 | 20-day breakout (Donchian) | Close above the 20-day high; exit on a close under the 10-day low |
 | S04 | Turtle 55-day | Close above the 55-day high; exit under the 20-day low |
-| S05 | Pullback to EMA 20 | Uptrend (above EMA 50 and 200), close touches EMA 20 and turns up; stop under the swing low |
+| S05 | Pullback to EMA 20 | Uptrend (above EMA 50 and 200), the day's low touches EMA 20 and it closes above it and up on the day; stop the 5-day low; trail 2 ATR; out after 20 days |
 | S06 | Pullback to EMA 50 | As S05 at EMA 50 |
 | S07 | RSI(2) mean reversion | Above EMA 200, RSI(2) under 10; exit when the close is above the 5-day average |
 | S08 | Bollinger mean reversion | Above EMA 200, close under the lower band; exit at the middle band |
 | S09 | MACD cross | MACD crosses above its signal while above EMA 50; exit on the opposite cross |
 | S10 | Golden cross | EMA 50 crosses above EMA 200; exit on the opposite cross |
-| S11 | Tight base (VCP-style) | Three narrowing pullbacks within 20% of the high, then a breakout on volume |
+| S11 | Tight base | 20-day range at most 10% of the price, within 5% of the 52-week high, close above the 20-day high on 1.5x volume; stop the 20-day low; trail 2 ATR; out after 20 days |
 | S12 | Post-results drift | Gap up 3%+ on results that holds the first day; stop under the gap day's low |
 | S13 | Delivery accumulation | Delivery % (NSE) above its 20-day average for 3 days while price rises (needs the NSE delivery file, PR 9) |
 | S14 | Sector rotation | Buy the 2 strongest stocks of the 2 strongest sectors over 1 month; rebalance weekly |
 | S15 | Relative strength rank | Top 7 by 3-month return relative to Nifty; rebalance weekly |
 | S16 | News breakout (old shadow) | Filing within 2 days, close above the 20-day high on 2x volume, up 2%+, above EMA 50; stop 5-day low (at most 8%); target 2R; 10 days |
-| S17 | Technical scanner (old shadow) | Above EMA 20/50/200, RSI 50-65, MACD above signal, ADX over 20 and rising, volume 1.5x, R:R 2+ |
+| S17 | Technical scanner (old shadow) | Above EMA 20/50/200, RSI 50-65, MACD above signal, ADX over 20 and rising, volume 1.5x; stop the 10-day low; target 2R; out after 15 days |
 | S18 | Concentrated momentum (old shadow) | Top 3 of S01 at 3% risk |
 | S19 | Darvas box | New box above the last; buy the box breakout; stop the box low |
 | S20 | Weinstein stage 2 | Close above a rising 30-week average after a base; exit under the average |
 | S21 | Ichimoku | Close above the cloud with Tenkan over Kijun; exit under the Kijun |
-| S22 | Elder triple screen | Weekly trend up (MACD histogram rising), daily RSI under 30 then turns up |
+| S22 | Elder triple screen | Weekly trend up (MACD histogram rising), daily RSI(14) crosses back above 30; stop 2 ATR; trail 2 ATR; out after 10 days |
 | S23 | Cup and handle / double bottom | Simple pattern checks on daily bars; buy the handle or neckline break |
 | S24 | Insider and promoter buying, bulk and block deals | Promoter buying (NSE filings) or a known fund's bulk buy, with the price holding above it for 2 days (needs the NSE deals file, PR 9) |
 | S25 | Long build-up in stock futures | Price and futures open interest both up 2 days in a row (information only; no futures trades) |
@@ -110,40 +110,41 @@ charges with the DP charge on sells; idle cash stays cash.
 Exit variants for swing (on S01, S02, S05): chandelier exit (3 ATR under the highest high), parabolic SAR,
 time stop at 10 days.
 
-## 3. Long-term (PR 8)
-Common: pool ₹1,00,000; at most 10 holdings, at most 15% each, at most 2 per industry; rebalance on the first
-Saturday of the month unless noted; Upstox delivery charges.
+## 3. Long-term (built in PR 8, except L11-L14)
+Common: pool ₹1,00,000; at most 10 holdings, at most 15% each, at most 2 per industry; rebalance after the
+close on the first trading day of the month unless noted, orders filling at the next open; Upstox delivery
+charges with the DP charge on sells. Fundamentals come from Upstox once a month.
 
 | ID | Name | Rule |
 |---|---|---|
-| L01 | Quality (old shadow) | ROCE 15%+, debt under 0.5x equity, positive operating cash flow 3 of 4 years, 10%+ revenue and profit growth over 3 years, P/E in the cheaper half; top 10 |
-| L02 | Momentum 30 (old shadow) | Top 15 by the Nifty Momentum 30 method, no loss-makers, debt under 1.5x outside banks |
+| L01 | Quality (old shadow) | ROCE 15%+, debt under 0.5x equity, positive operating cash flow 3 of 4 years, 10%+ revenue and profit growth over 3 years, P/E in the cheaper half; top 10. The debt check is not applied yet (no debt ratio in the Upstox data) |
+| L02 | Momentum 30 (old shadow) | Top 10 (the pool's cap) by 6- and 12-month return per unit of volatility (the Nifty Momentum 30 method), profitable companies only. The debt check is not applied yet |
 | L03 | Concentrated momentum (old shadow) | Top 5 of L02 |
 | L04 | Value | Lowest P/E among stocks with ROCE 15%+ |
 | L05 | Growth at a reasonable price | PEG under 1 with profit growth 15%+ |
 | L06 | Magic Formula | Rank by earnings yield plus return on capital; top 10 |
-| L07 | Dividend yield | Top yields with a payout ratio under 70% |
+| L07 | Dividend yield | Top dividend yields over the last 12 months. The payout check is not applied yet |
 | L08 | Low volatility | Lowest 1-year volatility among quality stocks |
 | L09 | Quality + momentum | L01's list ranked by 6-month return |
-| L10 | Shareholding changes | Promoter or FII holding up 1%+ over the last quarter |
+| L10 | Shareholding changes | Promoter or FII holding up 1 percentage point or more over the last quarter |
 | L11 | Coffee-can | 10 years of 10%+ revenue growth and ROCE 15%+ every year; buy and hold |
 | L12 | Piotroski F-score | Score 8-9 of 9 |
 | L13 | Altman Z distress filter | L01 minus companies with Z under 1.8 |
 | L14 | Dividend growth | Dividend raised 5 years running |
-| L15 | Equal-weight Nifty Next 50 | Hold all 50 equally; rebalance quarterly |
-| L16 | Equal-weight Nifty 50 | Hold all 50 equally; rebalance quarterly |
+| L15 | Equal-weight Nifty Next 50 | Hold all 50 equally; rebalance in January, April, July and October |
+| L16 | Equal-weight Nifty 50 | Hold all 50 equally; rebalance in January, April, July and October |
 
-## 4. Benchmarks (PR 8)
+## 4. Benchmarks (built in PR 8)
 | ID | Benchmark | For |
 |---|---|---|
 | B01 | NIFTYBEES bought on day 1 and held | Swing and long-term |
-| B02 | NIFTYBEES monthly SIP (equal amount on the first trading day of each month) | Swing and long-term |
+| B02 | NIFTYBEES monthly SIP (a twelfth of the pool on the first trading day of each month, so fully in after a year) | Swing and long-term |
 
-## 5. AI-versus-rules split tests (PR 8)
+## 5. AI-versus-rules split tests (A01 and A02 built in PR 8)
 Built from the AI's saved decisions, so they cost no Claude calls. They show where the AI adds value.
 | ID | Test |
 |---|---|
-| A01 | The AI's real intraday entries with exit X1 (rules manage the exit) |
+| A01 | The AI's real intraday entries with exit X1 (rules manage the exit): the next 1-minute open after the real fill, the stop the AI reviewed |
 | A02 | The AI's real intraday entries with exit X3 |
 | A03 | Rule entries E02, E04, E05, E09 with the AI's exits (when the AI managed a similar trade the same day) |
 
@@ -151,3 +152,20 @@ Built from the AI's saved decisions, so they cost no Claude calls. They show whe
 The old exit variants, opening-range tests and auto-bar ladder are covered by E01-E03 and X1-X7. The six old
 shadow models (volatility stop, trade filter, early cut, let winners run, combined, skip stretched) and the
 council test's old history come across with the lakehouse copy (PR 10) and keep their old results.
+
+## 7. How shadows are judged (built in PR 8)
+- **Families**: intraday entries, intraday exits, intraday overlays, swing, swing exits, long-term, AI versus
+  rules; benchmarks are shown for reference and never judged.
+- **Luck line**: assume no variant in the family has an edge (each one's daily results shifted to average
+  zero), resample the days 2,000 times, and take the 95th percentile of the best variant's total. A variant
+  must beat it to count as better than the luck of running many tests side by side.
+- **Status**: "too early" under 100 trades; "kill" at 200+ trades when even the upper 95% bound of the average
+  trade is below zero; "above luck" at 200+ trades over the luck line; "passed" once it stays above the line
+  for 20 more trading days without a break; otherwise "watching".
+- Swing and long-term trades are few, so those shadows stay "too early" for months; their daily values are
+  still shown against NIFTYBEES.
+
+**Not built yet** (they need data we don't fetch yet): S12 (results calendar), S13 (NSE delivery file),
+S24 (NSE filings and deals), S25 (futures open interest), L11-L14 (10 years of statements and the balance
+sheet), A03 (matching the AI's exits to similar rule trades). S19 and S23 (Darvas box, cup and handle) need
+pattern code; they come with the lakehouse backfill (PR 10), where they can be checked on years of bars.

@@ -244,6 +244,7 @@ class Engine:
                                                     key=r["key"], invalid_if=r["invalid_if"])
         self.state["msg_index"][str(mid)] = review_id
         self._journal("fill", review_id=review_id, symbol=r["symbol"], side=r["side"], qty=r["qty"], price=fill,
+                      at=self.now().isoformat(timespec="seconds"),
                       charges_rs=charges, why=why, facts=r["facts"], council=r["council"], pros=r["pros"],
                       cons=r["cons"], agent_yes_pct=r["agent_yes_pct"])
         self._save()

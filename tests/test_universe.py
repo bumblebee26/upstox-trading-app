@@ -12,6 +12,20 @@ CSV = ("Company Name,Industry,Symbol,Series,ISIN Code\r\n"
        "Some Textiles Ltd.,Textiles,SOMETEX,EQ,INE000T01011\r\n")
 
 
+class IndexListTest(unittest.TestCase):
+    def test_other_index_lists_use_the_same_sources(self):
+        urls = []
+
+        def fake(method, url, **kw):
+            urls.append(url)
+            return CSV.encode()
+
+        with mock.patch.object(universe.http, "request", fake):
+            m = universe.index_list("nifty50", store=storage.Local(tempfile.mkdtemp()), minimum=3)
+        self.assertEqual(set(m), {"HDFCBANK", "INFY", "SOMETEX"})
+        self.assertTrue(urls[0].endswith("/ind_nifty50list.csv"))
+
+
 class Nifty500Test(unittest.TestCase):
     def setUp(self):
         patcher = mock.patch.object(universe, "MIN_MEMBERS", 3)  # the sample has 3 stocks, not 500

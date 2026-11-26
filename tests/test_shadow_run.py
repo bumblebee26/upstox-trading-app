@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime
 
-from core import storage
+from core import journal, storage
 from shadows import run
 from tests.test_shadow_intraday import minute_day
 
@@ -60,12 +60,26 @@ class RunTest(unittest.TestCase):
                           charges=lambda key, qty, pool, side, price: ux.charges(key) and 8.0)
         saved = storage.get_json("shadows/intraday/2026-12-14.json", store=store)
         self.assertEqual(saved["universe"], ["ABC"])
-        self.assertEqual(len(saved["variants"]), 66)
+        self.assertEqual(len(saved["variants"]), 68)  # 66 rule variants + A01 and A02
         self.assertGreater(out["trades"], 0)
         e05 = saved["variants"]["E05-X1"]
         self.assertEqual(e05["trades"][0]["symbol"], "ABC")
         self.assertIn("🧪 Shadows", tg.sent[-1])
         self.assertLess(ux.charge_calls, 2 * out["trades"])  # identical orders are priced once
+
+    def test_ai_split_tests_replay_the_ais_real_entries(self):
+        store, ux, tg = storage.Local(tempfile.mkdtemp()), FakeUx(), FakeTg()
+        local = tempfile.mkdtemp()
+        journal.append("2026-12-14", "review", base_dir=local, mirror=store, review_id="ABC-092000", symbol="ABC",
+                       key="NSE_EQ|ABC", side="BUY", stop=99.0)
+        journal.append("2026-12-14", "fill", base_dir=local, mirror=store, review_id="ABC-092000", symbol="ABC",
+                       side="BUY", qty=10, price=100.0, at="2026-12-14T09:35:20")
+        run.run_day(now=datetime(2026, 12, 14, 16, 10), store=store, ux=ux, tg=tg,
+                    members={"ABC": {"industry": "Information Technology"}}, charges=lambda *a: 8.0)
+        saved = storage.get_json("shadows/intraday/2026-12-14.json", store=store)["variants"]
+        self.assertEqual([t["entry_time"][11:16] for t in saved["A01"]["trades"]], ["09:36"])
+        self.assertEqual(len(saved["A02"]["trades"]), 1)
+        self.assertNotEqual(saved["A01"]["trades"][0]["exit_reason"], saved["A02"]["trades"][0]["exit_reason"])
 
     def test_holiday_and_weekend_skip(self):
         ux = FakeUx()
