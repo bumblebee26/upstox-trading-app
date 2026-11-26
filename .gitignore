@@ -1,0 +1,22 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+!infra/*/project.auto.tfvars
+backend.hcl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local secrets
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
