@@ -17,15 +17,21 @@ class CostsTest(unittest.TestCase):
         self.calls.append((key, qty, product, side, price))
         if self.fail_with:
             raise self.fail_with
-        return {"total": 7.76 if side == "BUY" else 9.5}
+        return {"total": 7.76 if side == "BUY" else 9.5, "dp_plan": {"name": "DP4A", "min_expense": 20.0}}
 
     def test_order_charges_is_upstox_total(self):
         self.assertEqual(costs.order("NSE_EQ|K", 10, "intraday", "BUY", 1000.0), 7.76)
         self.assertEqual(self.calls, [("NSE_EQ|K", 10, "I", "BUY", 1000.0)])
 
+    def test_delivery_sell_adds_the_dp_charge_with_gst(self):
+        # Upstox's total leaves out the DP charge (₹20 a stock a sell day on plan DP4A, plus 18% GST)
+        self.assertEqual(costs.order("NSE_EQ|K", 10, "swing", "SELL", 1000.0), 9.5 + 23.6)
+        self.assertEqual(costs.order("NSE_EQ|K", 10, "intraday", "SELL", 1000.0), 9.5)
+        self.assertEqual(costs.order("NSE_EQ|K", 10, "long_term", "BUY", 1000.0), 7.76)
+
     def test_round_trip_prices_both_orders(self):
         total = costs.round_trip("NSE_EQ|K", 10, "swing", "BUY", 1000.0, 1100.0)
-        self.assertEqual(total, 17.26)
+        self.assertEqual(total, 40.86)
         self.assertEqual(self.calls, [("NSE_EQ|K", 10, "D", "BUY", 1000.0), ("NSE_EQ|K", 10, "D", "SELL", 1100.0)])
 
     def test_short_round_trip_sells_first(self):
