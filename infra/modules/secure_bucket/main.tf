@@ -9,6 +9,10 @@ terraform {
 }
 
 resource "aws_s3_bucket" "this" {
+  #checkov:skip=CKV_AWS_145:SSE-S3 encryption is on; a customer-managed KMS key costs $1 a month and is not on the AWS free plan
+  #checkov:skip=CKV_AWS_144:a copy in a second region doubles storage; versioning keeps old copies
+  #checkov:skip=CKV_AWS_18:access logs need another bucket; only this account's upx- users and roles can reach it
+  #checkov:skip=CKV2_AWS_62:nothing listens for bucket events
   bucket = var.bucket_name
 
   # State and journals live here: Terraform refuses to delete the bucket.

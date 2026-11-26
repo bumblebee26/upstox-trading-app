@@ -28,8 +28,9 @@ data "archive_file" "kicker" {
 }
 
 resource "aws_cloudwatch_log_group" "kicker" {
+  #checkov:skip=CKV_AWS_158:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; logs are encrypted by AWS
   name              = "/aws/lambda/upx-kicker"
-  retention_in_days = 14
+  retention_in_days = 365
 }
 
 data "aws_iam_policy_document" "lambda_trust" {
@@ -43,8 +44,9 @@ data "aws_iam_policy_document" "lambda_trust" {
 }
 
 resource "aws_iam_role" "kicker" {
-  name               = "upx-kicker-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
+  name                 = "upx-kicker-role"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_trust.json
+  permissions_boundary = local.boundary
 }
 
 # The kicker may read only the GitHub dispatch token and write its own logs.
@@ -78,6 +80,11 @@ resource "aws_iam_role_policy" "kicker" {
 }
 
 resource "aws_lambda_function" "kicker" {
+  #checkov:skip=CKV_AWS_116:a dead-letter queue needs SQS, not on the AWS free plan; failures are alerted by Telegram (PR 9b)
+  #checkov:skip=CKV_AWS_117:it only calls GitHub; a VPC would need a NAT gateway (about $35 a month)
+  #checkov:skip=CKV_AWS_115:a new account shares 10 concurrent runs, so reserving some can fail; schedules start at most one at a time
+  #checkov:skip=CKV_AWS_272:code signing needs AWS Signer, not on the AWS free plan; code comes only from this repo via reviewed merges
+  #checkov:skip=CKV_AWS_50:X-Ray is not on the AWS free plan
   function_name    = "upx-kicker"
   role             = aws_iam_role.kicker.arn
   runtime          = "python3.13"
@@ -105,8 +112,9 @@ data "aws_iam_policy_document" "scheduler_trust" {
 }
 
 resource "aws_iam_role" "scheduler" {
-  name               = "upx-scheduler-role"
-  assume_role_policy = data.aws_iam_policy_document.scheduler_trust.json
+  name                 = "upx-scheduler-role"
+  assume_role_policy   = data.aws_iam_policy_document.scheduler_trust.json
+  permissions_boundary = local.boundary
 }
 
 resource "aws_iam_role_policy" "scheduler" {
@@ -130,6 +138,7 @@ locals {
 }
 
 resource "aws_scheduler_schedule" "kick" {
+  #checkov:skip=CKV_AWS_297:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; AWS encrypts schedules
   for_each                     = local.kicks
   name                         = each.key
   schedule_expression          = each.value[0]
