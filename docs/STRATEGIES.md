@@ -75,13 +75,13 @@ Exit variants X2-X7 run on the four core entries E02, E04, E05, E09 (24 variants
 
 **Intraday total: 30 + 24 + 12 = 66 variants.**
 
-## 2. Swing (built in PR 8, except S12, S13, S19, S23, S24, S25)
+## 2. Swing (built in PR 8; S12, S13 and S24 in PR 9d; not yet S19, S23, S25)
 Common: pool ₹60,000; at most 7 holdings at 25%; buy at the next open, stop checked on closes; Upstox delivery
 charges with the DP charge on sells; idle cash stays cash.
 
 | ID | Name | Rule |
 |---|---|---|
-| S01 | Momentum (the old live rules) | Top 7 momentum ranks (trader/rank.py); stop 2 ATR, trail 2 ATR under the highest close; out after 20 days. The old boost for a fresh positive filing waits for the NSE filings feed (PR 9) |
+| S01 | Momentum (the old live rules) | Top 7 momentum ranks (trader/rank.py); stop 2 ATR, trail 2 ATR under the highest close; out after 20 days. The old boost for a fresh positive filing is left out: calling a filing positive needs judgment, and shadows are plain rules |
 | S02 | 52-week-high breakout | Close at a new 52-week high on 1.5x volume; stop 2 ATR; trail 2 ATR; out after 20 days |
 | S03 | 20-day breakout (Donchian) | Close above the 20-day high; exit on a close under the 10-day low |
 | S04 | Turtle 55-day | Close above the 55-day high; exit under the 20-day low |
@@ -92,8 +92,8 @@ charges with the DP charge on sells; idle cash stays cash.
 | S09 | MACD cross | MACD crosses above its signal while above EMA 50; exit on the opposite cross |
 | S10 | Golden cross | EMA 50 crosses above EMA 200; exit on the opposite cross |
 | S11 | Tight base | 20-day range at most 10% of the price, within 5% of the 52-week high, close above the 20-day high on 1.5x volume; stop the 20-day low; trail 2 ATR; out after 20 days |
-| S12 | Post-results drift | Gap up 3%+ on results that holds the first day; stop under the gap day's low |
-| S13 | Delivery accumulation | Delivery % (NSE) above its 20-day average for 3 days while price rises (needs the NSE delivery file, PR 9) |
+| S12 | Post-results drift | On the board meeting's day (NSE results calendar) or the next trading day (results often come after the close): opens 3%+ above yesterday's close and closes above its open; stop under that day's low; out after 20 days |
+| S13 | Delivery build-up | Delivery % (NSE bhavcopy) above its own 20-day average on each of the last 3 days, while the close rose each of those days; stop 2 ATR; trail 2 ATR; out after 20 days. Needs 23 trading days of saved files (first signals about 30 Dec 2026) |
 | S14 | Sector rotation | Buy the 2 strongest stocks of the 2 strongest sectors over 1 month; rebalance weekly |
 | S15 | Relative strength rank | Top 7 by 3-month return relative to Nifty; rebalance weekly |
 | S16 | News breakout (old shadow) | Filing within 2 days, close above the 20-day high on 2x volume, up 2%+, above EMA 50; stop 5-day low (at most 8%); target 2R; 10 days |
@@ -104,7 +104,7 @@ charges with the DP charge on sells; idle cash stays cash.
 | S21 | Ichimoku | Close above the cloud with Tenkan over Kijun; exit under the Kijun |
 | S22 | Elder triple screen | Weekly trend up (MACD histogram rising), daily RSI(14) crosses back above 30; stop 2 ATR; trail 2 ATR; out after 10 days |
 | S23 | Cup and handle / double bottom | Simple pattern checks on daily bars; buy the handle or neckline break |
-| S24 | Insider and promoter buying, bulk and block deals | Promoter buying (NSE filings) or a known fund's bulk buy, with the price holding above it for 2 days (needs the NSE deals file, PR 9) |
+| S24 | Big buyers | A bulk or block BUY of ₹5 crore or more, then the next 2 closes above the deal price; stop at the deal price; trail 2 ATR; out after 20 days. Promoter and insider buying is left out: those disclosures come from an NSE feed we don't fetch |
 | S25 | Long build-up in stock futures | Price and futures open interest both up 2 days in a row (information only; no futures trades) |
 
 Exit variants for swing (on S01, S02, S05): chandelier exit (3 ATR under the highest high), parabolic SAR,
@@ -162,10 +162,10 @@ council test's old history come across with the lakehouse copy (PR 10) and keep 
 - **Status**: "too early" under 100 trades; "kill" at 200+ trades when even the upper 95% bound of the average
   trade is below zero; "above luck" at 200+ trades over the luck line; "passed" once it stays above the line
   for 20 more trading days without a break; otherwise "watching".
+- NSE files are saved each evening at 19:30, so S12, S13 and S24 see them from the next day.
 - Swing and long-term trades are few, so those shadows stay "too early" for months; their daily values are
   still shown against NIFTYBEES.
 
-**Not built yet** (they need data we don't fetch yet): S12 (results calendar), S13 (NSE delivery file),
-S24 (NSE filings and deals), S25 (futures open interest), L11-L14 (10 years of statements and the balance
+**Not built yet** (they need data we don't fetch yet): S25 (futures open interest), L11-L14 (10 years of statements and the balance
 sheet), A03 (matching the AI's exits to similar rule trades). S19 and S23 (Darvas box, cup and handle) need
 pattern code; they come with the lakehouse backfill (PR 10), where they can be checked on years of bars.

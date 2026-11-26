@@ -15,6 +15,7 @@ import csv
 import io
 import json
 import logging
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 from core import http, storage
@@ -79,6 +80,32 @@ def parse_calendar(rows):
         if d and r.get("symbol"):
             out.append({"symbol": r["symbol"], "purpose": r.get("purpose"), "day": d})
     return out
+
+
+def quick_fetch(url):
+    """One try, 8 seconds: the intraday session waits on this, so a slow NSE must not stall a decision."""
+    return http.request("GET", url, headers=HEADERS, retries=1, timeout=8)
+
+
+def filings(symbol, now=None, days=2, fetch=quick_fetch, top=5):
+    """One stock's NSE filings of the last `days` days, newest first, for the AI's facts. Never raises: a
+    refused or broken reply gives [] (filings are context, never a reason to block a decision)."""
+    now = now or datetime.now(IST).replace(tzinfo=None)
+    try:
+        rows = json.loads(fetch(f"{FILINGS_URL}&symbol={urllib.parse.quote(symbol)}"))
+    except (http.NotFound, RuntimeError, ValueError, OSError) as err:
+        log.warning("NSE filings for %s unavailable: %s", symbol, err)
+        return []
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        try:
+            when = datetime.strptime(str(r.get("an_dt")), "%d-%b-%Y %H:%M:%S")
+        except ValueError:
+            continue
+        if (now - when).days < days:
+            out.append((when, {"when": f"{when.day} {when:%b %H:%M}", "what": r.get("desc"),
+                               "detail": (r.get("attchmntText") or "")[:300]}))
+    return [f for _, f in sorted(out, key=lambda x: x[0], reverse=True)][:top]
 
 
 def save_day(day, store=None, fetch=fetch):

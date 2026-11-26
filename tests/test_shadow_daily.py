@@ -133,6 +133,23 @@ class DailyTest(unittest.TestCase):
         self.assertIsNone(storage.get_json("shadows/fundamentals/2026-12/AAA.json", store=self.store))  # not cached
         self.assertTrue(led["S03"]["equity"])   # the rest of the day still ran
 
+    def test_nse_context_from_the_saved_files(self):
+        storage.put_json("nse/2026-11-26/bhav.json", {"AAA": {"close": 1.0, "volume": 1, "deliv_qty": 1, "deliv_pct": 55.0},
+                                                      "ZZZ": {"deliv_pct": 10.0}}, store=self.store)
+        storage.put_json("nse/2026-11-26/bulk.json", [{"day": "2026-11-26", "symbol": "AAA", "side": "BUY", "qty": 100000,
+                                                       "price": 600.0, "client": "F"},
+                                                      {"day": "2026-11-26", "symbol": "AAA", "side": "SELL", "qty": 9,
+                                                       "price": 600.0, "client": "G"}], store=self.store)
+        storage.put_json("nse/2026-11-25/calendar.json", [{"symbol": "BBB", "purpose": "Financial Results",
+                                                           "day": "2026-11-28"},
+                                                          {"symbol": "BBB", "purpose": "Dividend", "day": "2026-11-29"}],
+                         store=self.store)
+        ctx = daily.nse_context(self.store, date(2026, 11, 27), {"AAA", "BBB"})
+        self.assertEqual(ctx["AAA"]["deliv"], {"2026-11-26": 55.0})
+        self.assertEqual(ctx["AAA"]["buys"], [{"day": "2026-11-26", "price": 600.0, "value": 6e7}])
+        self.assertEqual(ctx["BBB"]["results_days"], {"2026-11-28"})
+        self.assertNotIn("ZZZ", ctx)
+
     def test_intraday_results_join_the_families(self):
         storage.put_json("shadows/intraday/2026-12-01.json",
                          {"variants": {"E01-X1": {"trades": [{"net_rs": 50.0}, {"net_rs": -20.0}], "net_rs": 30.0}}},

@@ -8,7 +8,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
-from core import costs, journal, storage, upstox
+from core import costs, journal, nse, storage, upstox
 from trader import council, facts, ledger, messages, risk, screen, telegram, universe
 
 log = logging.getLogger("upx")
@@ -28,12 +28,12 @@ APPROVAL_WAIT_SEC = 180
 
 class Engine:
     def __init__(self, store=None, data_dir=None, now=None, ux=upstox, tg=telegram, council_fn=council.review,
-                 charges=costs.order, sleep=time.sleep, members=None):
+                 charges=costs.order, sleep=time.sleep, members=None, filings=nse.filings):
         self.store = store or storage.backend()
         self.data_dir = data_dir
         self.now = now or (lambda: datetime.now(IST).replace(tzinfo=None))
         self.ux, self.tg, self.council_fn, self.charges, self.sleep = ux, tg, council_fn, charges, sleep
-        self.members = members
+        self.members, self.filings = members, filings
         self._daily, self._market, self._answers = {}, {}, {}
         self._beat = None
 
@@ -115,9 +115,11 @@ class Engine:
     def get_facts(self, symbol, quote=None):
         key = self._key(symbol)
         quote = quote or self.ux.quotes([key])[key]
-        return facts.packet(symbol, self.ux.intraday_candles(key, 1), self._daily_candles(symbol), quote,
-                            nifty_1m=self._index_1m("Nifty 50"),
-                            sector_1m=self._index_1m(universe.sector_index(self._sector(symbol))))
+        packet = facts.packet(symbol, self.ux.intraday_candles(key, 1), self._daily_candles(symbol), quote,
+                              nifty_1m=self._index_1m("Nifty 50"),
+                              sector_1m=self._index_1m(universe.sector_index(self._sector(symbol))))
+        packet["filings"] = self.filings(symbol)  # NSE filings of the last 2 days (results, orders, board outcomes)
+        return packet
 
     def screen(self, top=20):
         """Every NSE stock through the guardrails; the best `top`, with fresh news counted."""

@@ -197,6 +197,52 @@ def s22(d):
     return 1.0, d[-1]["close"] - 2 * _atr(d), None
 
 
+# ---- NSE-data entries: ctx is the stock's NSE data (shadows/daily.py), saved each evening at 19:30 -----------------
+# They see NSE files up to yesterday's evening (today's arrive after this job runs).
+
+def s12(d, ctx):
+    """Results drift: on the board meeting's day or the next (results often come after the close), opens 3%+
+    above yesterday's close and closes above its open."""
+    if len(d) < 30:
+        return None
+    today, prev = d[-1], d[-2]
+    if not ({today["ts"][:10], prev["ts"][:10]} & (ctx.get("results_days") or set())):
+        return None
+    gap = today["open"] / prev["close"] - 1
+    if gap < 0.03 or today["close"] <= today["open"]:
+        return None
+    return gap, today["low"], None
+
+
+def s13(d, ctx):
+    """Delivery build-up: delivery % above its own 20-day average on each of the last 3 days with files, while
+    the close rose each of those days."""
+    deliv = ctx.get("deliv") or {}
+    if len(d) < 30:
+        return None
+    pcts = [deliv.get(b["ts"][:10]) for b in d[-24:-1]]
+    if None in pcts:
+        return None
+    base, last = sum(pcts[:20]) / 20, pcts[20:]
+    rising = all(d[i]["close"] > d[i - 1]["close"] for i in range(len(d) - 4, len(d) - 1))
+    if not rising or min(last) <= base:
+        return None
+    return sum(last) / 3 / base, d[-1]["close"] - 2 * _atr(d), None
+
+
+def s24(d, ctx):
+    """Big buyers: a bulk or block BUY of ₹5 crore or more, then the next 2 closes above the deal price."""
+    if len(d) < 30:
+        return None
+    deal_day = d[-3]["ts"][:10]
+    best = None
+    for b in ctx.get("buys") or []:
+        if b["day"] == deal_day and b["value"] >= 5e7 and d[-2]["close"] > b["price"] and d[-1]["close"] > b["price"]:
+            if best is None or b["value"] > best["value"]:
+                best = b
+    return (best["value"] / 1e7, best["price"], None) if best else None
+
+
 # ---- exits: True when the rule says sell on today's close ------------------------------------------------------------
 
 def x_low(n):
@@ -251,6 +297,8 @@ STRATEGIES = {
     "S09": _spec(s09, exit=x_macd_down),
     "S10": _spec(s10, exit=x_death),
     "S11": _spec(s11, trail="atr2", days=20),
+    "S12": _spec(s12, days=20, kind="nse"),
+    "S13": _spec(s13, trail="atr2", days=20, kind="nse"),
     "S14": _spec(None, kind="sector_rotation"),
     "S15": _spec(None, kind="relative_strength"),
     "S16": _spec(s16, days=10, kind="news"),
@@ -259,6 +307,7 @@ STRATEGIES = {
     "S20": _spec(s20, exit=x_sma150),
     "S21": _spec(s21, exit=x_kijun),
     "S22": _spec(s22, trail="atr2", days=10),
+    "S24": _spec(s24, trail="atr2", days=20, kind="nse"),
 }
 for base in ("S01", "S02", "S05"):
     STRATEGIES[f"{base}-CH"] = dict(STRATEGIES[base], trail="chandelier")
@@ -298,7 +347,8 @@ def _rank_targets(kind, hist, nifty, industries):
     return [s for xs in best for _, s in sorted(xs, reverse=True)[:2]]
 
 
-def step(sid, led, day, hist, keys, charges, nifty=None, industries=None, news=None, week=None, universe=None):
+def step(sid, led, day, hist, keys, charges, nifty=None, industries=None, news=None, week=None, universe=None,
+         nse=None):
     """One trading day for swing shadow `sid`. hist: {symbol: daily bars up to and including today} for every
     priced stock (fills, values and exits); universe: the symbols new entries may come from (default: all)."""
     spec = STRATEGIES[sid]
@@ -321,7 +371,8 @@ def step(sid, led, day, hist, keys, charges, nifty=None, industries=None, news=N
         picks = [(r["score"], r["symbol"], r["close"] - 2 * (r["atr"] or 0), None) for r in top]
     else:
         for sym, d in pool.items():
-            out = spec["entry"](d, sym in (news or set())) if kind == "news" else spec["entry"](d)
+            out = (spec["entry"](d, sym in (news or set())) if kind == "news" else
+                   spec["entry"](d, (nse or {}).get(sym, {})) if kind == "nse" else spec["entry"](d))
             if out:
                 picks.append((out[0], sym, out[1], out[2]))
     room = MAX_HOLD - len(led["holdings"]) - len([o for o in led["pending"] if o["side"] == "BUY"])
