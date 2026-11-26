@@ -1,0 +1,43 @@
+# One-time (27 Nov): drop the tables still tied to the deleted upx-lakehouse pipeline, then load the three new
+# pipelines from the landing volume. Removed, with lakehouse/cleanup.py, once it has run.
+name: Lakehouse cleanup (one-time)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lakehouse
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 60
+    env:
+      UPX_STATE_BUCKET: upx-state-538498973473
+      AWS_REGION: ap-southeast-2
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - run: python -m pip install --quiet boto3
+
+      - name: Drop the old pipeline's tables
+        run: python -m lakehouse.cleanup 502749df-d1d9-4ed5-b529-7260563d5d29
+
+      - name: First load of the three pipelines
+        env:
+          UPX_PIPELINES: trading shadows market
+          UPX_FORCE_PIPELINE: "true"
+        run: python -m lakehouse.sync
