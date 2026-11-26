@@ -89,5 +89,31 @@ class WaitTest(unittest.TestCase):
         self.assertIn("column x not found", errors[0])
 
 
+class JobTest(unittest.TestCase):
+    def test_runs_a_job_by_name_and_returns_its_output(self):
+        import os
+        from unittest import mock
+        from lakehouse import jobs
+        calls, states = [], iter(["RUNNING", "TERMINATED"])
+
+        def fake(method, url, **kw):
+            calls.append((method, url))
+            if "/jobs/list" in url:
+                return json.dumps({"jobs": [{"job_id": 7, "settings": {"name": "upx-history-copy"}}]}).encode()
+            if "/run-now" in url:
+                return b'{"run_id": 70}'
+            if "/runs/get-output" in url:
+                return b'{"logs": "source nse copied"}'
+            return json.dumps({"state": {"life_cycle_state": next(states), "result_state": "SUCCESS"},
+                               "tasks": [{"run_id": 71}]}).encode()
+
+        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "https://h", "DATABRICKS_TOKEN": "t"}), \
+                mock.patch.object(jobs.http, "request", side_effect=fake):
+            result, logs = jobs.run("upx-history-copy", sleep=lambda s: None)
+        self.assertEqual(result, "SUCCESS")
+        self.assertIn("nse", logs)
+        self.assertIn(("POST", "https://h/api/2.1/jobs/run-now"), calls)
+
+
 if __name__ == "__main__":
     unittest.main()
