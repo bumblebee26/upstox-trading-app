@@ -16,6 +16,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 POOL = "intraday"
 STATE_KEY = "state/intraday.json"
 TRACK_KEY = "state/track.json"
+HEARTBEAT_KEY = "state/heartbeat-intraday.json"  # the session's "still alive" mark, read by the AWS guardian
+HEARTBEAT_EVERY_MIN = 4
 ENTRY_TOLERANCE_PCT = 0.3
 REVIEW_EXPIRY_MIN = 10  # a review older than this must be done again before placing
 STALE_MIN = 15          # no new entry when the stock's last 1-minute candle is older than this
@@ -33,6 +35,7 @@ class Engine:
         self.ux, self.tg, self.council_fn, self.charges, self.sleep = ux, tg, council_fn, charges, sleep
         self.members = members
         self._daily, self._market, self._answers = {}, {}, {}
+        self._beat = None
 
     # ---- state ---------------------------------------------------------------------------------------------
     def _day(self):
@@ -43,6 +46,15 @@ class Engine:
 
     def _journal(self, event, **fields):
         return journal.append(self._day(), event, base_dir=self.data_dir, mirror=self.store, pool=POOL, **fields)
+
+    def load(self):
+        """The pool's saved state, today's journal and the track record; no market calls (the AWS responder
+        and guardian use this too). The journal must be restored before anything is appended to it."""
+        self.state = storage.get_json(STATE_KEY, store=self.store) or ledger.new_pool(POOL)
+        for k, v in (("auto", True), ("reviews", {}), ("msg_index", {}), ("tg_offset", 0)):
+            self.state.setdefault(k, v)
+        journal.restore(self._day(), base_dir=self.data_dir, mirror=self.store)
+        self.track = storage.get_json(TRACK_KEY, [], store=self.store)
 
     def start_day(self):
         """Load the pool (or start it), restore today's journal, set today's risk from India VIX.
@@ -56,10 +68,7 @@ class Engine:
                     else "market closed for the day")
             self.tg.send(f"🏖 No session today: {name}." if name != "market closed for the day" else "🏖 No session: the market has closed for the day.")
             return {"holiday": name}
-        self.state = storage.get_json(STATE_KEY, store=self.store) or ledger.new_pool(POOL)
-        for k, v in (("auto", True), ("reviews", {}), ("msg_index", {}), ("tg_offset", 0)):
-            self.state.setdefault(k, v)
-        journal.restore(day.isoformat(), base_dir=self.data_dir, mirror=self.store)
+        self.load()
         self.ins = self.ux.instruments()
         if self.members is None:
             self.members = universe.nifty500(store=self.store)
@@ -69,7 +78,6 @@ class Engine:
         ledger.new_day(self.state, day, vix=vix)
         if new:
             self.state.update(reviews={}, msg_index={})
-        self.track = storage.get_json(TRACK_KEY, [], store=self.store)
         self.monitor_once()  # stops touched while no session was running (between morning and afternoon)
         for sym, p in list(self.state["positions"].items()):
             if p["opened_at"][:10] < day.isoformat():  # an afternoon session that never ran: never hold overnight
@@ -295,6 +303,9 @@ class Engine:
     def monitor_once(self):
         """Fire stops on the latest 1-minute candle; square everything off from 15:10."""
         now = self.now()
+        if self._beat is None or (now - self._beat).total_seconds() >= HEARTBEAT_EVERY_MIN * 60:
+            storage.put_json(HEARTBEAT_KEY, {"at": now.isoformat(timespec="seconds")}, store=self.store)
+            self._beat = now
         if (now.hour, now.minute) >= SQUARE_OFF:
             for sym in list(self.state["positions"]):
                 self.exit_position(sym, why="15:10 square-off", reason="square_off")
@@ -403,6 +414,14 @@ class Engine:
         self._journal("report", trades=len(exits), net_rs=self.state["realized_today"], reconciled=ok)
         self._save()
         return {"trades": len(exits), "net_rs": self.state["realized_today"], "reconciled": ok}
+
+
+def heartbeat_age_min(store, now):
+    """Whole minutes since a session last said it was alive, or None if none ever did."""
+    beat = storage.get_json(HEARTBEAT_KEY, store=store)
+    if not beat:
+        return None
+    return int((now - datetime.fromisoformat(beat["at"])).total_seconds() // 60)
 
 
 def ledger_view(state):

@@ -150,6 +150,17 @@ class EngineTest(unittest.TestCase):
         self.assertAlmostEqual(ex["net_rs"], round((494.75 - 500.25) * ex["qty"] - 10.0, 2))
         self.assertTrue(self.e.report()["reconciled"])
 
+    def test_heartbeat_every_few_minutes_while_guarding(self):
+        self.e.monitor_once()
+        self.assertEqual(engine.heartbeat_age_min(self.store, self.clock()), 0)
+        self.clock.t = self.clock.t.replace(minute=2)
+        self.e.monitor_once()
+        self.assertEqual(engine.heartbeat_age_min(self.store, self.clock()), 2)  # not written again yet
+        self.clock.t = self.clock.t.replace(minute=5)
+        self.e.monitor_once()
+        self.assertEqual(engine.heartbeat_age_min(self.store, self.clock()), 0)
+        self.assertIsNone(engine.heartbeat_age_min(storage.Local(tempfile.mkdtemp()), self.clock()))
+
     def test_square_off_at_1510(self):
         self.e.place_trade(self.review()["review_id"], why="-")
         self.clock.t = self.clock.t.replace(hour=15, minute=10)

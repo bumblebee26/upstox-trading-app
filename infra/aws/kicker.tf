@@ -1,32 +1,6 @@
 # The kicker: EventBridge Scheduler calls a small Lambda at fixed India times, and the Lambda starts a GitHub
 # workflow. GitHub's own cron can run hours late; it stays in the workflows only as a backup.
 
-data "archive_file" "kicker" {
-  type        = "zip"
-  output_path = "${path.module}/build/kicker.zip"
-
-  source {
-    content  = ""
-    filename = "core/__init__.py"
-  }
-  source {
-    content  = file("${path.module}/../../core/http.py")
-    filename = "core/http.py"
-  }
-  source {
-    content  = file("${path.module}/../../core/ssm.py")
-    filename = "core/ssm.py"
-  }
-  source {
-    content  = ""
-    filename = "lambdas/__init__.py"
-  }
-  source {
-    content  = file("${path.module}/../../lambdas/kicker.py")
-    filename = "lambdas/kicker.py"
-  }
-}
-
 resource "aws_cloudwatch_log_group" "kicker" {
   #checkov:skip=CKV_AWS_158:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; logs are encrypted by AWS
   name              = "/aws/lambda/upx-kicker"
@@ -49,12 +23,14 @@ resource "aws_iam_role" "kicker" {
   permissions_boundary = local.boundary
 }
 
-# The kicker may read only the GitHub dispatch token and write its own logs.
+# The kicker may read the GitHub dispatch token and the Telegram bot (to report a failed start), save that
+# message to the app's feed, and write its own logs.
 data "aws_iam_policy_document" "kicker" {
   statement {
-    sid       = "ReadDispatchToken"
-    actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:ap-southeast-2:${local.account_id}:parameter/upx/github-dispatch-token"]
+    sid     = "ReadDispatchToken"
+    actions = ["ssm:GetParameter"]
+    resources = [for p in ["github-dispatch-token", "telegram-bot-token-v2", "telegram-chat-id"] :
+    "arn:aws:ssm:ap-southeast-2:${local.account_id}:parameter/upx/${p}"]
   }
   statement {
     sid       = "DecryptViaSsm"
@@ -71,6 +47,11 @@ data "aws_iam_policy_document" "kicker" {
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.kicker.arn}:*"]
   }
+  statement {
+    sid       = "WriteTheFeed"
+    actions   = ["s3:PutObject"]
+    resources = ["${module.state_bucket.arn}/feed/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "kicker" {
@@ -85,15 +66,20 @@ resource "aws_lambda_function" "kicker" {
   #checkov:skip=CKV_AWS_115:a new account shares 10 concurrent runs, so reserving some can fail; schedules start at most one at a time
   #checkov:skip=CKV_AWS_272:code signing needs AWS Signer, not on the AWS free plan; code comes only from this repo via reviewed merges
   #checkov:skip=CKV_AWS_50:X-Ray is not on the AWS free plan
+  #checkov:skip=CKV_AWS_173:owner OK 27 Nov (free plan only): the settings hold only the bucket name, no secret; AWS encrypts them with its own key
   function_name    = "upx-kicker"
   role             = aws_iam_role.kicker.arn
   runtime          = "python3.13"
   handler          = "lambdas.kicker.handler"
-  filename         = data.archive_file.kicker.output_path
-  source_code_hash = data.archive_file.kicker.output_base64sha256
+  filename         = data.archive_file.app.output_path
+  source_code_hash = data.archive_file.app.output_base64sha256
   timeout          = 30
   memory_size      = 128
   depends_on       = [aws_cloudwatch_log_group.kicker]
+
+  environment {
+    variables = { UPX_STATE_BUCKET = module.state_bucket.id }
+  }
 }
 
 data "aws_iam_policy_document" "scheduler_trust" {
@@ -121,8 +107,12 @@ resource "aws_iam_role_policy" "scheduler" {
   name = "upx-scheduler"
   role = aws_iam_role.scheduler.id
   policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{ Effect = "Allow", Action = "lambda:InvokeFunction", Resource = aws_lambda_function.kicker.arn }]
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = concat([aws_lambda_function.kicker.arn], [for f in aws_lambda_function.ops : f.arn])
+    }]
   })
 }
 
