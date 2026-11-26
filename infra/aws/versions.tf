@@ -7,6 +7,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
   }
 
   # This repo's own state bucket (made by infra/bootstrap). Never the old repos' state bucket.
