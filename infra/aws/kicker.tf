@@ -123,6 +123,8 @@ locals {
   kicks = {
     "upx-morning-session"   = ["cron(58 8 ? * MON-FRI *)", "trading-session.yml", { phase = "morning" }]
     "upx-afternoon-session" = ["cron(27 12 ? * MON-FRI *)", "trading-session.yml", { phase = "afternoon" }]
+    "upx-pools-daily"       = ["cron(50 15 ? * MON-FRI *)", "pools.yml", { pools = "swing long_term" }]
+    "upx-long-term-weekly"  = ["cron(15 10 ? * SAT *)", "pools.yml", { pools = "long_term" }]
   }
 }
 

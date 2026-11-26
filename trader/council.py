@@ -35,14 +35,14 @@ LENSES = {
 }
 
 
-def run_claude(prompt, timeout):
+def run_claude(prompt, timeout, model=MODEL):
     """One Claude call with no tools (it can only read and answer). Claude Code doesn't pass its own login to
     the tools it starts, so the session gives the same subscription token as COUNCIL_CLAUDE_TOKEN."""
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)  # bill the subscription, never an API key
     if env.get("COUNCIL_CLAUDE_TOKEN"):
         env["CLAUDE_CODE_OAUTH_TOKEN"] = env["COUNCIL_CLAUDE_TOKEN"]
-    out = subprocess.run(["claude", "-p", prompt, "--model", MODEL, "--tools", ""], capture_output=True,
+    out = subprocess.run(["claude", "-p", prompt, "--model", model, "--tools", ""], capture_output=True,
                          text=True, timeout=timeout, check=True, env=env)
     return out.stdout
 

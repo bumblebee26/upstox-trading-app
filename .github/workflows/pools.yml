@@ -1,0 +1,65 @@
+# The swing and long-term pools (paper money). Weekdays 15:50 IST after the close: fills at today's open,
+# stops on today's close, then the AI's plan reviewed by the full council. Saturdays 10:15: the long-term
+# weekly review. Started by the AWS kicker; the cron below is only a backup. Each pool runs once a day.
+name: Pools
+
+on:
+  workflow_dispatch:
+    inputs:
+      pools:
+        description: "Which pools, space-separated: swing long_term"
+        type: string
+        default: "swing long_term"
+  schedule:
+    - cron: "20 10 * * 1-5"  # 15:50 IST backup
+    - cron: "45 4 * * 6"     # Saturday 10:15 IST backup (long-term)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pools
+  cancel-in-progress: false
+
+jobs:
+  pools:
+    name: Pools
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 60
+    env:
+      POOLS: ${{ inputs.pools || (github.event.schedule == '45 4 * * 6' && 'long_term' || 'swing long_term') }}
+      UPX_STATE_BUCKET: upx-state-538498973473
+      UPX_DATA_DIR: data
+      AWS_REGION: ap-southeast-2
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Install boto3 and Claude Code
+        run: |
+          python -m pip install --quiet boto3
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run each pool once today
+        run: |
+          unset ANTHROPIC_API_KEY  # bill the subscription, never an API key
+          status=0
+          for pool in $POOLS; do
+            case "$pool" in swing|long_term) ;; *) echo "unknown pool $pool"; exit 1 ;; esac
+            if python scripts/claim_session.py "$pool"; then
+              python -m trader.pools "$pool" || status=1
+            fi
+          done
+          exit $status
+
+      - name: Tell Telegram if a pool failed
+        if: failure()
+        run: python -c "from trader import telegram; telegram.send('⚠️ The pools job ($POOLS) stopped with an error; check the Actions log. Holdings keep their stops.')"
