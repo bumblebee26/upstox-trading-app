@@ -70,5 +70,24 @@ class SyncTest(unittest.TestCase):
         self.assertGreater(len(sent), 5)
 
 
+class WaitTest(unittest.TestCase):
+    def test_waits_for_the_update_and_reports_errors(self):
+        import os
+        from unittest import mock
+        states = iter(["RUNNING", "FAILED"])
+
+        def fake(method, url, **kw):
+            if "/events" in url:
+                return json.dumps({"events": [{"level": "ERROR", "message": "Flow 'trades' failed",
+                                               "error": {"exceptions": [{"message": "column x not found"}]}}]}).encode()
+            return json.dumps({"update": {"state": next(states)}}).encode()
+
+        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "https://h", "DATABRICKS_TOKEN": "t"}), \
+                mock.patch.object(sync.http, "request", side_effect=fake):
+            state, errors = sync.wait("p1", "u1", sleep=lambda s: None)
+        self.assertEqual(state, "FAILED")
+        self.assertIn("column x not found", errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,11 @@ name: Lakehouse
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the pipeline even if no new file arrived"
+        type: boolean
+        default: false
   schedule:
     - cron: "35 11 * * 1-5"  # 17:05 IST backup
 
@@ -19,7 +24,7 @@ jobs:
     name: Sync to Databricks
     runs-on: ubuntu-latest
     environment: trading
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       UPX_STATE_BUCKET: upx-state-538498973473
       AWS_REGION: ap-southeast-2
@@ -27,6 +32,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      UPX_FORCE_PIPELINE: ${{ inputs.force || false }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
@@ -37,5 +43,5 @@ jobs:
       - name: Install boto3
         run: python -m pip install --quiet boto3
 
-      - name: Sync and start the pipeline
+      - name: Sync, run the pipeline and wait for it
         run: python -m lakehouse.sync
