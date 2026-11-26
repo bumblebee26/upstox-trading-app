@@ -126,10 +126,11 @@ locals {
     "upx-shadows-daily"     = ["cron(10 16 ? * MON-FRI *)", "shadows.yml", {}]
     "upx-nse-evening"       = ["cron(30 19 ? * MON-FRI *)", "nse.yml", { job = "evening" }]
     "upx-morning-brief"     = ["cron(40 8 ? * MON-FRI *)", "nse.yml", { job = "brief" }]
-    "upx-lakehouse-morning" = ["cron(35 9 ? * MON-FRI *)", "lakehouse.yml", {}]
-    "upx-lakehouse-midday"  = ["cron(5 13 ? * MON-FRI *)", "lakehouse.yml", {}]
-    "upx-lakehouse-close"   = ["cron(50 16 ? * MON-FRI *)", "lakehouse.yml", {}]
-    "upx-lakehouse-evening" = ["cron(5 20 ? * MON-FRI *)", "lakehouse.yml", {}]
+    # The lakehouse: each start names its pipeline, which runs only if its own files are new.
+    "upx-lakehouse-midday"  = ["cron(5 13 ? * MON-FRI *)", "lakehouse.yml", { pipelines = "trading" }]
+    "upx-lakehouse-close"   = ["cron(55 16 ? * MON-FRI *)", "lakehouse.yml", { pipelines = "trading" }]
+    "upx-lakehouse-shadows" = ["cron(30 17 ? * MON-FRI *)", "lakehouse.yml", { pipelines = "shadows" }]
+    "upx-lakehouse-evening" = ["cron(5 20 ? * MON-FRI *)", "lakehouse.yml", { pipelines = "market" }]
   }
 }
 

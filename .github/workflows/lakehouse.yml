@@ -1,12 +1,17 @@
-# Copy the state bucket into the Databricks landing volume, then start the lakehouse pipeline if anything new
-# arrived (dummy-money paper trader). Started by the AWS kicker 4 times a day; the cron lines are backups.
+# Copy the state bucket into the Databricks landing volume, then run the pipeline each start names, if its own
+# files are new (dummy-money paper trader). Started by the AWS kicker: trading 13:05 and 16:55, shadows 17:30,
+# market 20:05 IST. The cron line is a backup that only copies files.
 name: Lakehouse
 
 on:
   workflow_dispatch:
     inputs:
+      pipelines:
+        description: "Which pipelines may run: trading, shadows, market (space-separated); empty = sync only"
+        type: string
+        default: ""
       force:
-        description: "Run the pipeline even if no new file arrived"
+        description: "Run the named pipelines even if no new file arrived"
         type: boolean
         default: false
   schedule:
@@ -33,6 +38,7 @@ jobs:
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       UPX_FORCE_PIPELINE: ${{ inputs.force || false }}
+      UPX_PIPELINES: ${{ inputs.pipelines }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 

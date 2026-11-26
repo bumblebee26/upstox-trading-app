@@ -11,7 +11,13 @@ Landing layout (/Volumes/upx/bronze/landing/<source>/...), one JSON object per l
   nse_bhav/, nse_deals/, nse_filings/, nse_calendar/   the NSE files of the day
 Only files whose content changed since the last upload are sent (lakehouse/manifest.json in the bucket).
 
-  python -m lakehouse.sync
+Three pipelines, each run only at its own times and only if its folders got new files (Free Edition: one
+pipeline at a time, a daily compute quota). The AWS kicker names the pipeline for each start:
+  upx-trading   journal, pools, feed                         13:05 and 16:55 IST
+  upx-shadows   shadow_trades, shadow_status, shadow_ledgers  17:30 IST
+  upx-market    nse_* (and the copied history)               20:05 IST
+
+  UPX_PIPELINES=trading python -m lakehouse.sync
 """
 import hashlib
 import json
@@ -27,7 +33,9 @@ log = logging.getLogger("upx")
 IST = timezone(timedelta(hours=5, minutes=30))
 VOLUME = "/Volumes/upx/bronze/landing"
 MANIFEST = "lakehouse/manifest.json"
-PIPELINE = "upx-lakehouse"
+FOLDERS = {"trading": ("journal", "pools", "feed"),
+           "shadows": ("shadow_trades", "shadow_status", "shadow_ledgers"),
+           "market": ("nse_bhav", "nse_deals", "nse_filings", "nse_calendar")}
 POOLS = ("intraday", "swing", "long_term")
 
 
@@ -97,13 +105,31 @@ def upload(path, body):
                  log_url=f"databricks files {path}")
 
 
-def start_pipeline():
-    query = urllib.parse.urlencode({"filter": f"name LIKE '{PIPELINE}'"})
+def pipeline_of(path):
+    folder = path.split("/", 1)[0]
+    return next(p for p, folders in FOLDERS.items() if folder in folders)
+
+
+def mark_pending(pending, sent):
+    """Note which pipelines have new files waiting."""
+    for path in sent:
+        pending[pipeline_of(path)] = True
+    return pending
+
+
+def due(pending, wanted, force=False):
+    """The pipelines this start should run: the ones it names that have new files (or all, when forced)."""
+    return [p for p in wanted if force or pending.get(p)]
+
+
+def start_pipeline(short):
+    name = f"upx-{short}"
+    query = urllib.parse.urlencode({"filter": f"name LIKE '{name}'"})
     found = json.loads(http.request("GET", f"{_host()}/api/2.0/pipelines?{query}", headers=_auth(),
                                     log_url="databricks list pipelines"))
-    ids = [p["pipeline_id"] for p in found.get("statuses", []) if p.get("name") == PIPELINE]
+    ids = [p["pipeline_id"] for p in found.get("statuses", []) if p.get("name") == name]
     if not ids:
-        raise RuntimeError(f"pipeline {PIPELINE} not found; apply infra/databricks first")
+        raise RuntimeError(f"pipeline {name} not found; apply infra/databricks first")
     started = json.loads(http.request("POST", f"{_host()}/api/2.0/pipelines/{ids[0]}/updates", data=b"{}",
                                       headers=dict(_auth(), **{"Content-Type": "application/json"}),
                                       log_url="databricks start update"))
@@ -144,18 +170,31 @@ def run(today, store=None, put=upload, back_days=3):
                 seen[path] = digest
                 sent.append(path)
     finally:
+        seen["_pending"] = mark_pending(seen.get("_pending", {}), sent)
         storage.put_json(MANIFEST, seen, store=store)
     return sent
 
 
+def ran(store, short):
+    """A pipeline's run finished: its waiting files are loaded."""
+    seen = storage.get_json(MANIFEST, {}, store=store)
+    seen.setdefault("_pending", {})[short] = False
+    storage.put_json(MANIFEST, seen, store=store)
+
+
 if __name__ == "__main__":
-    files = run(datetime.now(IST).date())
-    print(json.dumps({"uploaded": len(files)}))
-    if files or os.environ.get("UPX_FORCE_PIPELINE") == "true":  # nothing new: no run (Free Edition compute)
-        pid, uid = start_pipeline()
+    store = storage.backend()
+    files = run(datetime.now(IST).date(), store=store)
+    wanted = [p for p in os.environ.get("UPX_PIPELINES", "").split() if p in FOLDERS]
+    todo = due(storage.get_json(MANIFEST, {}, store=store).get("_pending", {}), wanted,
+               force=os.environ.get("UPX_FORCE_PIPELINE") == "true")
+    print(json.dumps({"uploaded": len(files), "asked": wanted, "running": todo}))
+    for short in todo:  # one after another: Free Edition runs one pipeline at a time
+        pid, uid = start_pipeline(short)
         state, errors = wait(pid, uid)
-        print(json.dumps({"pipeline": pid, "update": uid, "state": state}))
+        print(json.dumps({"pipeline": f"upx-{short}", "update": uid, "state": state}))
         for err in errors:
             print("ERROR", err)
         if state != "COMPLETED":
-            raise SystemExit(f"pipeline update {uid} ended {state}")
+            raise SystemExit(f"upx-{short} update {uid} ended {state}")
+        ran(store, short)

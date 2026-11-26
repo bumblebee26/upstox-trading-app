@@ -20,7 +20,8 @@ class ParseTest(unittest.TestCase):
     def test_bhavcopy_keeps_eq_rows_with_delivery(self):
         rows = nse.parse_bhav(BHAV)
         self.assertEqual(set(rows), {"ABC", "XYZ"})
-        self.assertEqual(rows["ABC"], {"close": 104.5, "volume": 200000, "deliv_qty": 120000, "deliv_pct": 60.0})
+        self.assertEqual(rows["ABC"], {"open": 101.0, "high": 105.0, "low": 99.0, "close": 104.5, "prev_close": 100.0,
+                                       "volume": 200000, "turnover_lacs": 204.6, "deliv_qty": 120000, "deliv_pct": 60.0})
         self.assertIsNone(rows["XYZ"]["deliv_pct"])
 
     def test_deals(self):

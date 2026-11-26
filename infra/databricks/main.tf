@@ -1,12 +1,18 @@
 # The lakehouse in Databricks Free Edition: inside catalog upx, the schemas bronze, silver and gold, the landing volume the sync
-# fills (lakehouse/sync.py), and one pipeline built from pipeline/*.sql. Applied by GitHub Actions after a
+# fills (lakehouse/sync.py), and three pipelines built from pipeline/<name>/*.sql. Applied by GitHub Actions after a
 # merge to main, once the owner approves the "infra" environment; it signs in with DATABRICKS_HOST and
 # DATABRICKS_TOKEN (the token is created by the owner and never sits in Terraform state).
 provider "databricks" {}
 
 locals {
   repo_root      = "${path.module}/../.."
-  pipeline_files = fileset(local.repo_root, "pipeline/*.sql")
+  pipeline_files = fileset(local.repo_root, "pipeline/**/*.sql")
+  # Each pipeline is run by lakehouse/sync.py only at its own times and only when its folders got new files.
+  pipelines = {
+    trading = "the real pools (journals, balances) and the Telegram feed; 13:05 and 16:55 IST"
+    shadows = "the rule-based paper shadows and NIFTYBEES benchmarks; 17:30 IST"
+    market  = "NSE files and the copied history; 20:05 IST"
+  }
 }
 
 # The catalog itself is made once by the owner in the Databricks UI (Catalog → + → Create catalog, name upx,
@@ -41,17 +47,22 @@ resource "databricks_workspace_file" "pipeline" {
   path     = "/Workspace/Shared/upx/${each.value}"
 }
 
-resource "databricks_pipeline" "lakehouse" {
-  name        = "upx-lakehouse"
+resource "databricks_pipeline" "layer" {
+  for_each    = local.pipelines
+  name        = "upx-${each.key}"
   catalog     = data.databricks_catalog.upx.name
   schema      = databricks_schema.layer["silver"].name
   serverless  = true
-  continuous  = false # started by the sync, only when new files arrived (Free Edition compute)
+  continuous  = false # started by the sync, only when its own files are new (Free Edition compute)
   development = false
   channel     = "CURRENT"
 
+  configuration = {
+    "upx.purpose" = each.value
+  }
+
   dynamic "library" {
-    for_each = databricks_workspace_file.pipeline
+    for_each = { for k, f in databricks_workspace_file.pipeline : k => f if startswith(k, "pipeline/${each.key}/") }
     content {
       file {
         path = library.value.path
@@ -60,8 +71,8 @@ resource "databricks_pipeline" "lakehouse" {
   }
 }
 
-output "pipeline_id" {
-  value = databricks_pipeline.lakehouse.id
+output "pipeline_ids" {
+  value = { for k, p in databricks_pipeline.layer : k => p.id }
 }
 
 # ---- History from the old system (files only; PR 10b) ----------------------------------------------------------

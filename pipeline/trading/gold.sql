@@ -1,4 +1,5 @@
--- Gold: what the dashboard, the app and the reviews read. Dummy money; results are paper results, not advice.
+-- upx-trading: the real pools (journals, balances) and the Telegram feed. Runs 13:05 and 16:55 IST.
+-- Gold: what the dashboard, the app and the reviews read.
 
 CREATE OR REFRESH MATERIALIZED VIEW gold.trading_daily
 COMMENT 'Each real pool per day: trades, wins, net after charges, end balance, and whether the balance moved by exactly the day net.'
@@ -36,32 +37,3 @@ AS SELECT pool, coalesce(rating, 'unrated') AS rating, count(*) AS trades,
           round(avg(CASE WHEN rating IS NULL THEN NULL WHEN (rating = 'up') = won THEN 1.0 ELSE 0.0 END) * 100, 1)
             AS call_right_pct
 FROM silver.trades GROUP BY 1, 2;
-
-CREATE OR REFRESH MATERIALIZED VIEW gold.shadow_scoreboard
-COMMENT 'Every shadow on its latest day: family, trades, net, luck line and status (passed, above luck, watching, too early, kill).'
-AS SELECT s.* FROM silver.shadow_status s
-JOIN (SELECT max(day) AS day FROM silver.shadow_status) m ON s.day = m.day;
-
-CREATE OR REFRESH MATERIALIZED VIEW gold.shadow_values
-COMMENT 'Swing, long-term and benchmark shadow ledgers per day, with the gain against their starting pool.'
-AS SELECT day, shadow,
-          CASE WHEN shadow LIKE 'B%' THEN 'benchmark' WHEN shadow LIKE 'L%' THEN 'long-term' ELSE 'swing' END AS kind,
-          capital, value, round(value - capital, 2) AS gain_rs, round((value / capital - 1) * 100, 2) AS gain_pct,
-          holdings, closed_trades
-FROM silver.shadow_ledgers;
-
-CREATE OR REFRESH MATERIALIZED VIEW gold.deals_board
-COMMENT 'NSE bulk and block deals of ₹1 crore and more in the last 30 days, biggest first within each day.'
-AS SELECT day, kind, symbol, client, side, qty, price, round(value_rs / 1e7, 2) AS value_cr
-FROM silver.deals WHERE value_rs >= 1e7 AND day >= date_sub(current_date(), 30);
-
-CREATE OR REFRESH MATERIALIZED VIEW gold.data_freshness
-COMMENT 'The newest day each source has reached, to spot a job that stopped.'
-AS SELECT 'journal' AS source, max(trade_date) AS newest_day FROM silver.trade_events
-UNION ALL SELECT 'pools', max(day) FROM silver.pool_days
-UNION ALL SELECT 'shadow trades', max(day) FROM silver.shadow_trades
-UNION ALL SELECT 'shadow status', max(day) FROM silver.shadow_status
-UNION ALL SELECT 'shadow ledgers', max(day) FROM silver.shadow_ledgers
-UNION ALL SELECT 'NSE bhavcopy', max(day) FROM silver.nse_eq_daily
-UNION ALL SELECT 'NSE deals', max(day) FROM silver.deals
-UNION ALL SELECT 'Telegram feed', to_date(max(sent_at)) FROM silver.feed;
