@@ -17,6 +17,7 @@ POOL = "intraday"
 STATE_KEY = "state/intraday.json"
 TRACK_KEY = "state/track.json"
 ENTRY_TOLERANCE_PCT = 0.3
+REVIEW_EXPIRY_MIN = 10  # a review older than this must be done again before placing
 STALE_MIN = 15          # no new entry when the stock's last 1-minute candle is older than this
 BREAKER_PCT = 12.0      # no new entry once the pool is this far below its best balance (until /resume)
 SQUARE_OFF = (15, 10)
@@ -69,6 +70,11 @@ class Engine:
         if new:
             self.state.update(reviews={}, msg_index={})
         self.track = storage.get_json(TRACK_KEY, [], store=self.store)
+        self.monitor_once()  # stops touched while no session was running (between morning and afternoon)
+        for sym, p in list(self.state["positions"].items()):
+            if p["opened_at"][:10] < day.isoformat():  # an afternoon session that never ran: never hold overnight
+                self.exit_position(sym, why="carried overnight; intraday positions close at the next start",
+                                   reason="carried_over")
         self._save()
         self.tg.send(f"☀️ {day:%a %d %b} · intraday {messages.inr(self.state['balance'])} · "
                      f"risk {self.state['day_risk_pct']}% a trade (India VIX {vix if vix is not None else 'unknown'})")
@@ -107,6 +113,7 @@ class Engine:
 
     def screen(self, top=20):
         """Every NSE stock through the guardrails; the best `top`, with fresh news counted."""
+        self.monitor_once()
         eq = self.ins["eq"]
         by_key = {v["key"]: s for s, v in eq.items()}
         quotes = {by_key[k]: q for k, q in self.ux.quotes(list(by_key)).items() if k in by_key}
@@ -142,6 +149,18 @@ class Engine:
         second = self.charges(key, qty, POOL, "SELL" if side == "BUY" else "BUY", exit_price)
         return None if first is None or second is None else first + second
 
+    def _gate(self, symbol, side, entry, stop, target, quote, stale):
+        """The risk gate with today's flags: the screen's guardrails (for a stock the AI names itself), the
+        circuit breaker and stale prices. Run at review and again just before placing."""
+        key, now = self._key(symbol), self.now()
+        tradable = bool(screen.shortlist({symbol: quote}, self._baseline(), set(self.members), {symbol}, now))
+        peak = self.state.setdefault("peak_balance", self.state["balance"])
+        breaker = self.state["balance"] < peak * (1 - BREAKER_PCT / 100)
+        return risk.gate(self.state, symbol=symbol, side=side, entry=entry, stop=stop, target=target,
+                         sector=self._sector(symbol), now=now,
+                         round_trip_charges=lambda q: self._round_trip(key, q, side, entry, target),
+                         tradable=tradable, breaker_on=breaker, data_stale=stale)
+
     def review_trade(self, symbol, side, setup, entry, stop, target, pros, cons, agent_yes_pct, invalid_if):
         key, side = self._key(symbol), side.upper()
         sector = self._sector(symbol)
@@ -150,13 +169,7 @@ class Engine:
         now = self.now()
         last = packet["time"]
         stale = last is None or (now.hour * 60 + now.minute) - (int(last[:2]) * 60 + int(last[3:])) > STALE_MIN
-        # The same guardrails as the screen (price, liquidity, spread, circuit room), for a stock the AI names itself
-        tradable = bool(screen.shortlist({symbol: quote}, self._baseline(), set(self.members), {symbol}, now))
-        peak = self.state.setdefault("peak_balance", self.state["balance"])
-        breaker = self.state["balance"] < peak * (1 - BREAKER_PCT / 100)
-        g = risk.gate(self.state, symbol=symbol, side=side, entry=entry, stop=stop, target=target, sector=sector,
-                      now=now, round_trip_charges=lambda q: self._round_trip(key, q, side, entry, target),
-                      tradable=tradable, breaker_on=breaker, data_stale=stale)
+        g = self._gate(symbol, side, entry, stop, target, quote, stale)
         if not g.allowed:
             self._journal("blocked_by_risk_gate", symbol=symbol, side=side, setup=setup, reason=g.reason)
             return {"allowed": False, "reason": g.reason}
@@ -165,6 +178,7 @@ class Engine:
         verdict = self.council_fn(case, self.track)  # members see facts and numbers only, not the AI's reasons
         rid = f"{symbol}-{self.now():%H%M%S}"
         self.state["reviews"][rid] = dict(case, key=key, sector=sector, qty=g.qty, risk_rs=g.risk_rs, rr=g.rr,
+                                          at=now.isoformat(timespec="seconds"),
                                           pros=pros, cons=cons, agent_yes_pct=agent_yes_pct, invalid_if=invalid_if,
                                           council=verdict)
         self._journal("review", review_id=rid, **{k: v for k, v in self.state["reviews"][rid].items()})
@@ -181,9 +195,13 @@ class Engine:
         return None
 
     def place_trade(self, review_id, why, approval_wait_sec=APPROVAL_WAIT_SEC):
-        r = self.state["reviews"].get(review_id)
+        r = self.state["reviews"].pop(review_id, None)  # a review can be placed once
         if not r:
             return {"status": "unknown review"}
+        self._save()
+        if (self.now() - datetime.fromisoformat(r["at"])).total_seconds() > REVIEW_EXPIRY_MIN * 60:
+            self._journal("expired", review_id=review_id)
+            return {"status": "expired", "reason": f"reviewed more than {REVIEW_EXPIRY_MIN} minutes ago; review again"}
         args = dict(side=r["side"], symbol=r["symbol"], setup=r["setup"], qty=r["qty"], entry=r["entry"],
                     target=r["target"], stop=r["stop"], risk_rs=r["risk_rs"], rr=r["rr"], pros=r["pros"],
                     cons=r["cons"], council=r["council"])
@@ -197,11 +215,21 @@ class Engine:
                 self._journal("not_approved", review_id=review_id, answer=answer)
                 return {"status": "not approved"}
             decision = "placed (you said YES)"
-        live = self.ux.quotes([r["key"]])[r["key"]]["last_price"]
+        quote = self.ux.quotes([r["key"]])[r["key"]]
+        live = quote["last_price"]
         stop_hit = live <= r["stop"] if r["side"] == "BUY" else live >= r["stop"]
         if abs(live / r["entry"] - 1) * 100 > ENTRY_TOLERANCE_PCT or stop_hit:
             self._journal("missed", review_id=review_id, live=live)
             return {"status": "missed", "live": live}
+        traded = quote.get("last_trade_time")
+        stale = bool(traded) and (self.now() - datetime.fromtimestamp(int(traded) / 1000, IST).replace(tzinfo=None)
+                                  ).total_seconds() > STALE_MIN * 60
+        g = self._gate(r["symbol"], r["side"], r["entry"], r["stop"], r["target"], quote, stale)  # limits may have changed
+        if not g.allowed:
+            self._journal("blocked_by_risk_gate", review_id=review_id, symbol=r["symbol"], reason=g.reason, at="place")
+            return {"status": "blocked", "reason": g.reason}
+        r["qty"] = min(r["qty"], g.qty)
+        args["qty"] = r["qty"]
         fill = ledger.slip(live, r["side"])
         charges = self.charges(r["key"], r["qty"], POOL, r["side"], fill)
         if charges is None:
@@ -228,11 +256,16 @@ class Engine:
         return {"status": "skipped"}
 
     def adjust_stop(self, symbol, new_stop, why):
+        self.monitor_once()  # finished minutes are judged against the stop that was in force then
+        if symbol not in self.state["positions"]:
+            return {"ok": False, "reason": f"{symbol} is no longer open (its stop was hit or it was closed)"}
         try:
             ledger.move_stop(self.state, symbol, new_stop)
-        except (risk.RuleBroken, KeyError) as err:
+        except risk.RuleBroken as err:
             return {"ok": False, "reason": str(err)}
         p = self.state["positions"][symbol]
+        # The new stop applies from the next minute on; earlier minutes are never judged against it.
+        p["checked_until"] = self.now().strftime("%Y-%m-%dT%H:%M")
         self._journal("stop_moved", symbol=symbol, stop=new_stop, why=why)
         self.tg.send(f"🛑 {symbol} stop now {messages.inr(new_stop)} · {why}", reply_to=p.get("msg_id"))
         self._save()
@@ -265,12 +298,23 @@ class Engine:
             for sym in list(self.state["positions"]):
                 self.exit_position(sym, why="15:10 square-off", reason="square_off")
             return
+        minute = now.strftime("%Y-%m-%dT%H:%M")
         for sym, p in list(self.state["positions"].items()):
-            last = self.ux.intraday_candles(p.get("key") or self._key(sym), 1)[-1]
-            if p["side"] == "BUY" and last["low"] <= p["stop"]:
-                self.exit_position(sym, why="stop hit", reason="stop", price=min(p["stop"], last["open"]))
-            elif p["side"] == "SELL" and last["high"] >= p["stop"]:
-                self.exit_position(sym, why="stop hit", reason="stop", price=max(p["stop"], last["open"]))
+            done = p.get("checked_until") or p["opened_at"][:16]  # the fill's own minute is never counted
+            for c in self.ux.intraday_candles(p.get("key") or self._key(sym), 1):
+                ts = c["ts"][:16]
+                if ts <= done:
+                    continue
+                if p["side"] == "BUY" and c["low"] <= p["stop"]:
+                    self.exit_position(sym, why="stop hit", reason="stop", price=min(p["stop"], c["open"]))
+                    break
+                if p["side"] == "SELL" and c["high"] >= p["stop"]:
+                    self.exit_position(sym, why="stop hit", reason="stop", price=max(p["stop"], c["open"]))
+                    break
+                if ts < minute:  # a finished minute; the one still forming is checked again next time
+                    p["checked_until"] = ts
+        if self.state["positions"]:
+            self._save()  # so the next session starts checking where this one stopped
 
     def handle_updates(self, wait=0):
         updates, self.state["tg_offset"] = self.tg.poll(self.state["tg_offset"], wait=wait)
@@ -341,9 +385,12 @@ class Engine:
             left = (nxt - self.now()).total_seconds()
             if self.handle_updates(wait=int(max(0, min(25, left)))) == 0 and left > 0:
                 self.sleep(min(1, left))
+        self.monitor_once()  # once more at the end, so the 15:10 square-off can't fall between checks
         return ledger_view(self.state)
 
     def report(self):
+        if (self.now().hour, self.now().minute) >= SQUARE_OFF:
+            self.monitor_once()  # nothing intraday stays open overnight
         events = journal.read(self._day(), base_dir=self.data_dir)
         exits = [e for e in events if e["event"] == "exit" and e.get("pool") == POOL]
         ok = ledger.reconciles(self.state, events)

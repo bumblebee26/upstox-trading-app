@@ -17,6 +17,13 @@ class ServerTest(unittest.TestCase):
         names = {t.name for t in asyncio.run(server.mcp.list_tools())}
         self.assertEqual(names, TOOLS)
 
+    def test_the_session_workflow_allows_exactly_these_tools(self):
+        import re
+        from pathlib import Path
+        text = Path(__file__).resolve().parent.parent.joinpath(".github/workflows/trading-session.yml").read_text()
+        listed = set(re.search(r"for t in (.*?); do", text, re.S).group(1).replace("\\", " ").split())
+        self.assertEqual(listed, TOOLS)
+
     def test_a_failing_tool_returns_its_error(self):
         self.assertEqual(server._safe(lambda: 1 / 0)["error"][:17], "ZeroDivisionError")
 

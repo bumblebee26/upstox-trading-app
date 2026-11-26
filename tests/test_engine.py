@@ -179,6 +179,65 @@ class EngineTest(unittest.TestCase):
         r = self.review()
         self.assertEqual(self.e.place_trade(r["review_id"], why="-", approval_wait_sec=0)["status"], "not approved")
 
+    def test_a_review_is_placed_at_most_once(self):
+        r = self.review()
+        self.assertEqual(self.e.place_trade(r["review_id"], why="-")["status"], "placed")
+        self.assertEqual(self.e.place_trade(r["review_id"], why="-")["status"], "unknown review")
+        self.assertEqual(self.e.state["trades_today"], 1)
+
+    def test_the_gate_runs_again_at_placing(self):
+        self.e.members["XYZ"] = {"industry": "Information Technology", "isin": "INEXYZ"}
+        first, second = self.review(), self.review(symbol="XYZ")  # same sector: each passes alone, not both
+        self.assertEqual(self.e.place_trade(first["review_id"], why="-")["status"], "placed")
+        out = self.e.place_trade(second["review_id"], why="-")
+        self.assertEqual(out["status"], "blocked")
+        self.assertIn("per sector", out["reason"])
+
+    def test_pause_between_review_and_place_blocks(self):
+        r = self.review()
+        self.e.state["paused"] = True
+        self.assertEqual(self.e.place_trade(r["review_id"], why="-")["status"], "blocked")
+
+    def test_an_old_review_expires(self):
+        r = self.review()
+        self.clock.t = self.clock.t.replace(minute=11)
+        self.assertEqual(self.e.place_trade(r["review_id"], why="-")["status"], "expired")
+
+    def test_a_stop_touched_between_checks_still_fires(self):
+        self.e.place_trade(self.review()["review_id"], why="-")
+        self.ux.last_1m["NSE_EQ|ABC"] = [candle("10:00", 500, 500.5, 499, 500), candle("10:01", 498, 498.5, 494.0, 497),
+                                         candle("10:02", 497, 499, 496.5, 498.5)]  # touched at 10:01, recovered
+        self.clock.t = self.clock.t.replace(minute=3)
+        self.e.monitor_once()
+        self.assertEqual(self.events("exit")[0]["reason"], "stop")
+
+    def test_a_tightened_stop_never_judges_minutes_before_the_move(self):
+        self.e.place_trade(self.review()["review_id"], why="-")
+        self.ux.last_1m["NSE_EQ|ABC"] = [candle("10:01", 503, 506, 502, 505)]  # low 502: fine under the old stop 495
+        self.clock.t = self.clock.t.replace(minute=2)
+        self.assertTrue(self.e.adjust_stop("ABC", 503.0, why="breakeven plus costs")["ok"])
+        self.ux.last_1m["NSE_EQ|ABC"] = [candle("10:01", 503, 506, 502, 505), candle("10:02", 505, 511, 504, 510),
+                                         candle("10:03", 510, 511, 509, 510)]
+        self.clock.t = self.clock.t.replace(minute=4)
+        self.e.monitor_once()
+        self.assertIn("ABC", self.e.state["positions"])
+
+    def test_report_squares_off_anything_still_open(self):
+        self.e.place_trade(self.review()["review_id"], why="-")
+        self.clock.t = self.clock.t.replace(hour=15, minute=11)
+        out = self.e.report()
+        self.assertEqual(self.e.state["positions"], {})
+        self.assertTrue(out["reconciled"])
+
+    def test_a_position_left_from_an_earlier_day_is_closed_at_the_next_start(self):
+        self.e.place_trade(self.review()["review_id"], why="-")
+        self.clock.t = datetime(2026, 12, 15, 9, 0)  # the afternoon session never ran
+        again = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
+                              council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
+        again.start_day()
+        self.assertEqual(again.state["positions"], {})
+        self.assertIn("carried", self.tg.sent[-2]["text"] + self.tg.sent[-1]["text"])
+
     def test_stale_prices_block_new_entries(self):
         self.clock.t = self.clock.t.replace(hour=10, minute=30)  # the last 1-minute candle is from 09:15
         r = self.review()

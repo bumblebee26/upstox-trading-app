@@ -8,6 +8,7 @@ Each member's score is kept, so "skeptic alone" (the old reviewer) can still be 
 The full /llm-council (4 lenses, peer review, chair) is for swing and long-term decisions, not here.
 """
 import json
+import os
 import re
 import subprocess
 import time
@@ -35,9 +36,14 @@ LENSES = {
 
 
 def run_claude(prompt, timeout):
-    """One Claude call with no tools (it can only read and answer)."""
+    """One Claude call with no tools (it can only read and answer). Claude Code doesn't pass its own login to
+    the tools it starts, so the session gives the same subscription token as COUNCIL_CLAUDE_TOKEN."""
+    env = dict(os.environ)
+    env.pop("ANTHROPIC_API_KEY", None)  # bill the subscription, never an API key
+    if env.get("COUNCIL_CLAUDE_TOKEN"):
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = env["COUNCIL_CLAUDE_TOKEN"]
     out = subprocess.run(["claude", "-p", prompt, "--model", MODEL, "--tools", ""], capture_output=True,
-                         text=True, timeout=timeout, check=True)
+                         text=True, timeout=timeout, check=True, env=env)
     return out.stdout
 
 

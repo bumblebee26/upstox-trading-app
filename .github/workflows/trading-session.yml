@@ -46,18 +46,37 @@ jobs:
       - name: Install the MCP server's libraries and Claude Code
         run: |
           python -m pip install --quiet -r requirements.txt
-          npm install -g @anthropic-ai/claude-code
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Claim today's phase (stops a second run)
         id: claim
         run: python scripts/claim_session.py "$PHASE"
 
       - name: Run the AI trader
+        env:
+          # The council's own claude calls get the same subscription token (trader/council.py).
+          COUNCIL_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          unset ANTHROPIC_API_KEY  # bill the subscription, never an API key
+          cat > "$RUNNER_TEMP/mcp.json" <<JSON
+          {"mcpServers": {"trader": {"type": "stdio", "command": "$(which python)", "args": ["-m", "trader.server"], "cwd": "$GITHUB_WORKSPACE"}}}
+          JSON
+          tools=""
+          for t in start_day wait_for_open screen get_facts company_news account_status review_trade place_trade \
+                   skip_trade adjust_stop exit_position wait_for_next_candle end_of_day_report; do
+            tools="${tools:+$tools,}mcp__trader__$t"
+          done
           claude -p "$(cat prompts/session.md)
 
           Session phase: $PHASE." \
             --append-system-prompt "$(cat .claude/skills/intraday-playbook/SKILL.md)" \
-            --mcp-config .github/mcp-trader.json \
-            --allowedTools "mcp__trader" \
-            --disallowedTools "Bash" "Edit" "Write" "Read" "WebFetch" "WebSearch"
+            --mcp-config "$RUNNER_TEMP/mcp.json" \
+            --strict-mcp-config \
+            --allowedTools "$tools" \
+            --permission-mode dontAsk \
+            --output-format text
+
+      - name: Tell Telegram if the session failed
+        if: failure() && steps.claim.outcome == 'success'
+        run: python -c "from trader import telegram; telegram.send('⚠️ The $PHASE trading session stopped with an error. Open positions are checked when the next session starts, and anything left from today closes then; check the Actions log.')"
