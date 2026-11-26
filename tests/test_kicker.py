@@ -24,6 +24,14 @@ class KickerTest(unittest.TestCase):
         self.assertNotIn("ghp_TEST", kw["log_url"])
         self.assertEqual(out, {"dispatched": "trading-session.yml", "inputs": {"phase": "morning"}})
 
+    def test_a_failed_start_is_told_on_telegram_and_still_fails(self):
+        sent = []
+        with mock.patch.object(kicker.http, "request", side_effect=RuntimeError("GitHub said 500")), \
+                mock.patch.object(kicker.telegram, "send", side_effect=lambda text, **k: sent.append(text)):
+            with self.assertRaises(RuntimeError):
+                kicker.handler({"workflow": "shadows.yml", "inputs": {}}, None)
+        self.assertIn("could not start shadows.yml", sent[0])
+
     def test_only_known_workflows(self):
         with mock.patch.object(kicker.http, "request") as req:
             with self.assertRaises(ValueError):
