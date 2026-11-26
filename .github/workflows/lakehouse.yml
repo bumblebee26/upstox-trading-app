@@ -17,7 +17,6 @@ concurrency:
 jobs:
   sync:
     name: Sync to Databricks
-    if: vars.DATABRICKS_HOST != ''
     runs-on: ubuntu-latest
     environment: trading
     timeout-minutes: 20
