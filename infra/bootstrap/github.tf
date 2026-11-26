@@ -136,8 +136,8 @@ data "aws_iam_policy_document" "apply" {
     resources = ["${module.state_bucket.arn}/aws/*"]
   }
   statement {
-    sid       = "ManageOwnLambdasLogsSchedules"
-    actions   = ["lambda:*", "logs:*", "scheduler:*"]
+    sid     = "ManageOwnLambdasLogsSchedules"
+    actions = ["lambda:*", "logs:*", "scheduler:*"]
     resources = [
       "arn:aws:lambda:ap-southeast-2:${local.account_id}:function:upx-*",
       "arn:aws:logs:ap-southeast-2:${local.account_id}:log-group:/aws/lambda/upx-*",
@@ -146,7 +146,7 @@ data "aws_iam_policy_document" "apply" {
     ]
   }
   statement {
-    sid       = "ChangeRolesAndUsersOnlyWithTheBoundary"
+    sid = "ChangeRolesAndUsersOnlyWithTheBoundary"
     actions = ["iam:CreateRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:AttachRolePolicy",
       "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary", "iam:CreateUser", "iam:PutUserPolicy",
     "iam:DeleteUserPolicy", "iam:AttachUserPolicy", "iam:DetachUserPolicy", "iam:PutUserPermissionsBoundary"]
@@ -174,8 +174,8 @@ data "aws_iam_policy_document" "apply" {
     }
   }
   statement {
-    sid    = "NeverTouchTheseOrMakeKeys"
-    effect = "Deny"
+    sid     = "NeverTouchTheseOrMakeKeys"
+    effect  = "Deny"
     actions = ["iam:*"]
     resources = [aws_iam_role.plan.arn, "arn:aws:iam::${local.account_id}:role/upx-gha-apply", local.boundary,
     aws_iam_openid_connect_provider.github.arn]
