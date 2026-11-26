@@ -19,6 +19,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         srv = self.server
         status, headers, body = srv.replies[min(srv.hits, len(srv.replies) - 1)]
         srv.hits += 1
+        if status == 0:  # drop the connection without answering
+            self.close_connection = True
+            return
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
@@ -42,6 +45,11 @@ class HttpTest(unittest.TestCase):
 
     def test_retries_5xx_then_succeeds(self):
         srv, url = self.serve((503, {}, b""), (200, {}, b"ok"))
+        self.assertEqual(h.request("GET", url, backoff_seconds=0), b"ok")
+        self.assertEqual(srv.hits, 2)
+
+    def test_retries_dropped_connection(self):
+        srv, url = self.serve((0, {}, b""), (200, {}, b"ok"))
         self.assertEqual(h.request("GET", url, backoff_seconds=0), b"ok")
         self.assertEqual(srv.hits, 2)
 

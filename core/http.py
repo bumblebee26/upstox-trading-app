@@ -38,8 +38,8 @@ def request(method, url, *, headers=None, data=None, retries=3, backoff_seconds=
             if retry_after.isdigit():
                 wait = max(wait, int(retry_after))
             last = f"HTTP {err.code}"
-        except urllib.error.URLError as err:
-            last = err.reason
+        except OSError as err:  # URLError, plus timeouts and dropped connections while reading the reply
+            last = repr(err)
         if attempt < retries:
             log.warning("%s %s failed (attempt %d/%d): %s; retrying in %ss", method, shown, attempt, retries, last, wait)
             time.sleep(wait)
