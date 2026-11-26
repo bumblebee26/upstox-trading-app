@@ -68,5 +68,16 @@ class SwingTest(unittest.TestCase):
         self.assertIn("S05-CH", swing.STRATEGIES)
 
 
+class UniverseTest(unittest.TestCase):
+    def test_a_holding_that_leaves_the_universe_still_exits(self):
+        d = walk(5, n=260)
+        led = pf.new(60_000)
+        led["holdings"]["OLD"] = {"qty": 10, "entry": 100.0, "charges": 20.0, "day": "d000", "stop": 10 ** 6,
+                                  "high_close": 100.0, "high_high": 100.0}
+        swing.step("S03", led, "d259", {"OLD": d}, {"OLD": "K"}, charge, universe={})
+        self.assertNotIn("OLD", led["holdings"])  # its stop is checked although it is no longer liquid
+        self.assertEqual(led["closed"][0]["reason"], "stop")
+
+
 if __name__ == "__main__":
     unittest.main()

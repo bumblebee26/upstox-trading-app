@@ -39,8 +39,10 @@ jobs:
       - name: Run today's shadows once
         run: |
           if python scripts/claim_session.py shadows; then
-            python -m shadows.run
-            python -m shadows.daily
+            rc=0
+            python -m shadows.run || rc=$?    # the daily shadows run even if the intraday ones fail
+            python -m shadows.daily || rc=$?
+            exit $rc
           fi
 
       - name: Tell Telegram if the shadows failed

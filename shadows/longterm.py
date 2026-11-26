@@ -137,7 +137,7 @@ def _ranked(lid, data, daily, today):
                 except ValueError:
                     continue
                 if "dividend" in str(a.get("name", "")).lower() and 0 <= (day - ex).days <= 365:
-                    paid += float(a.get("amount") or 0)
+                    paid += rank.num(a.get("amount")) or 0.0
             close = (daily.get(s) or [{}])[-1].get("close")
             if paid > 0 and close:
                 rows.append((paid / close, s))

@@ -81,28 +81,28 @@ charges with the DP charge on sells; idle cash stays cash.
 
 | ID | Name | Rule |
 |---|---|---|
-| S01 | Momentum + news (the old live rules) | Top momentum ranks (trader/rank.py), up for a fresh positive filing; stop 2 ATR, trail 2 ATR under the highest close; out after 20 days |
-| S02 | 52-week-high breakout | Close at a new 52-week high on 1.5x volume; stop 2 ATR; trail 2 ATR |
+| S01 | Momentum (the old live rules) | Top 7 momentum ranks (trader/rank.py); stop 2 ATR, trail 2 ATR under the highest close; out after 20 days. The old boost for a fresh positive filing waits for the NSE filings feed (PR 9) |
+| S02 | 52-week-high breakout | Close at a new 52-week high on 1.5x volume; stop 2 ATR; trail 2 ATR; out after 20 days |
 | S03 | 20-day breakout (Donchian) | Close above the 20-day high; exit on a close under the 10-day low |
 | S04 | Turtle 55-day | Close above the 55-day high; exit under the 20-day low |
-| S05 | Pullback to EMA 20 | Uptrend (above EMA 50 and 200), close touches EMA 20 and turns up; stop under the swing low |
+| S05 | Pullback to EMA 20 | Uptrend (above EMA 50 and 200), the day's low touches EMA 20 and it closes above it and up on the day; stop the 5-day low; trail 2 ATR; out after 20 days |
 | S06 | Pullback to EMA 50 | As S05 at EMA 50 |
 | S07 | RSI(2) mean reversion | Above EMA 200, RSI(2) under 10; exit when the close is above the 5-day average |
 | S08 | Bollinger mean reversion | Above EMA 200, close under the lower band; exit at the middle band |
 | S09 | MACD cross | MACD crosses above its signal while above EMA 50; exit on the opposite cross |
 | S10 | Golden cross | EMA 50 crosses above EMA 200; exit on the opposite cross |
-| S11 | Tight base (VCP-style) | Three narrowing pullbacks within 20% of the high, then a breakout on volume |
+| S11 | Tight base | 20-day range at most 10% of the price, within 5% of the 52-week high, close above the 20-day high on 1.5x volume; stop the 20-day low; trail 2 ATR; out after 20 days |
 | S12 | Post-results drift | Gap up 3%+ on results that holds the first day; stop under the gap day's low |
 | S13 | Delivery accumulation | Delivery % (NSE) above its 20-day average for 3 days while price rises (needs the NSE delivery file, PR 9) |
 | S14 | Sector rotation | Buy the 2 strongest stocks of the 2 strongest sectors over 1 month; rebalance weekly |
 | S15 | Relative strength rank | Top 7 by 3-month return relative to Nifty; rebalance weekly |
 | S16 | News breakout (old shadow) | Filing within 2 days, close above the 20-day high on 2x volume, up 2%+, above EMA 50; stop 5-day low (at most 8%); target 2R; 10 days |
-| S17 | Technical scanner (old shadow) | Above EMA 20/50/200, RSI 50-65, MACD above signal, ADX over 20 and rising, volume 1.5x, R:R 2+ |
+| S17 | Technical scanner (old shadow) | Above EMA 20/50/200, RSI 50-65, MACD above signal, ADX over 20 and rising, volume 1.5x; stop the 10-day low; target 2R; out after 15 days |
 | S18 | Concentrated momentum (old shadow) | Top 3 of S01 at 3% risk |
 | S19 | Darvas box | New box above the last; buy the box breakout; stop the box low |
 | S20 | Weinstein stage 2 | Close above a rising 30-week average after a base; exit under the average |
 | S21 | Ichimoku | Close above the cloud with Tenkan over Kijun; exit under the Kijun |
-| S22 | Elder triple screen | Weekly trend up (MACD histogram rising), daily RSI under 30 then turns up |
+| S22 | Elder triple screen | Weekly trend up (MACD histogram rising), daily RSI(14) crosses back above 30; stop 2 ATR; trail 2 ATR; out after 10 days |
 | S23 | Cup and handle / double bottom | Simple pattern checks on daily bars; buy the handle or neckline break |
 | S24 | Insider and promoter buying, bulk and block deals | Promoter buying (NSE filings) or a known fund's bulk buy, with the price holding above it for 2 days (needs the NSE deals file, PR 9) |
 | S25 | Long build-up in stock futures | Price and futures open interest both up 2 days in a row (information only; no futures trades) |

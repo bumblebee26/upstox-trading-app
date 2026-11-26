@@ -48,7 +48,7 @@ def _fundamentals(ux, sym, isin, month, store):
             out[name] = ux.fundamentals(isin, kind)
         except (RuntimeError, upstox.UpstoxError) as err:
             log.warning("%s for %s failed: %s", kind, sym, err)
-            out[name] = None
+            return {}  # not cached: the next run asks again
     storage.put_json(key, out, store=store)
     return out
 
@@ -112,6 +112,7 @@ def run_day(now=None, store=None, ux=upstox, tg=telegram, members=None, charges=
                 and base["prev_close"] >= intraday_run.MIN_PRICE:
             liquid[sym] = d
     bars = {s: d[-1] for s, d in hist.items()}
+    priced = {s: d for s, d in hist.items() if s != BENCH}
     closes = {s: b["close"] for s, b in bars.items()}
     industries = {s: (members.get(s) or {}).get("industry") for s in liquid}
     idx = ins["index"].get("Nifty 50")
@@ -137,8 +138,8 @@ def run_day(now=None, store=None, ux=upstox, tg=telegram, members=None, charges=
     led = book["ledgers"]
     week = f"{day.isocalendar()[0]}-{day.isocalendar()[1]:02d}"
     for sid in swing.STRATEGIES:
-        swing.step(sid, led.setdefault(sid, pf.new(SWING_CAPITAL)), today, liquid, keys, charge, nifty=nifty,
-                   industries=industries, news=news, week=week)
+        swing.step(sid, led.setdefault(sid, pf.new(SWING_CAPITAL)), today, priced, keys, charge, nifty=nifty,
+                   industries=industries, news=news, week=week, universe=liquid)
 
     due = [lid for lid in lt.STRATEGIES if lt.rebalance_due(lid, led.get(lid, {}), today)]
     data, index_members = {}, {}
@@ -150,19 +151,21 @@ def run_day(now=None, store=None, ux=upstox, tg=telegram, members=None, charges=
         data = {s: d for s, d in data.items() if d.get("ratios")}
     for lid, name in (("L15", "niftynext50"), ("L16", "nifty50")):
         if lid in due:
-            index_members[lid] = [s for s in index_list(name, store=store) if s in bars]
+            try:
+                index_members[lid] = [s for s in index_list(name, store=store) if s in bars]
+            except RuntimeError as err:
+                log.warning("%s list unavailable, %s waits a day: %s", name, lid, err)
     for lid in lt.STRATEGIES:
         book_l = led.setdefault(lid, pf.new(LONG_CAPITAL))
         pf.fill_and_value(book_l, today, bars, keys, charge, "long_term")
-        if lid in due:
+        ready = index_members.get(lid) if lid in lt.QUARTERLY else data
+        if lid in due and ready:  # no data today (an outage): keep the holdings and try again tomorrow
             picks = lt.targets(lid, data, liquid, today, index_members=index_members.get(lid), industries=industries)
             pf.rebalance(book_l, picks, lt.weight(lid, len(picks)), closes)
             book_l["month"] = today[:7]
 
     for name, capital in BENCHMARKS.items():
         _benchmark(name, led.setdefault(name, pf.new(capital)), today, bars, keys, charge)
-    book["day"] = today
-    storage.put_json(LEDGERS, book, store=store)
 
     summary = storage.get_json(SUMMARY, {}, store=store)
     for name, v in (storage.get_json(f"shadows/intraday/{today}.json", {}, store=store).get("variants") or {}).items():
@@ -178,6 +181,8 @@ def run_day(now=None, store=None, ux=upstox, tg=telegram, members=None, charges=
     trading_days = sorted({d for s in series.values() for d in s["days"]})
     rows = families.judge(series, state=fam["state"], today=today, trading_days=trading_days)
     storage.put_json(FAMILIES, {"day": today, "rows": rows, "state": fam["state"]}, store=store)
+    book["day"] = today
+    storage.put_json(LEDGERS, book, store=store)  # last: it marks the day done
 
     gain = {n: pf.equity_now(v) - v["capital"] for n, v in led.items()}
     best_s = max(swing.STRATEGIES, key=gain.get)

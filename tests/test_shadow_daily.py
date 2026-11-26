@@ -116,6 +116,23 @@ class DailyTest(unittest.TestCase):
         self.assertEqual(names["S03"]["family"], "swing")
         self.assertIn("Swing and long-term shadows", self.tg.sent[-1])
 
+    def test_outages_leave_the_long_term_shadows_untouched(self):
+        def down(*a, **k):
+            raise RuntimeError("Upstox down")
+
+        def no_list(name, store=None):
+            raise RuntimeError("NSE refused")
+
+        self.ux.fundamentals = down
+        self.ux.today = date(2026, 12, 1)
+        daily.run_day(now=datetime(2026, 12, 1, 16, 20), store=self.store, ux=self.ux, tg=self.tg,
+                      members=self.members, charges=lambda *a: 20.0, index_list=no_list)
+        led = self.ledgers()
+        self.assertNotIn("month", led["L04"])   # no data: no rebalance, tried again tomorrow
+        self.assertNotIn("month", led["L16"])
+        self.assertIsNone(storage.get_json("shadows/fundamentals/2026-12/AAA.json", store=self.store))  # not cached
+        self.assertTrue(led["S03"]["equity"])   # the rest of the day still ran
+
     def test_intraday_results_join_the_families(self):
         storage.put_json("shadows/intraday/2026-12-01.json",
                          {"variants": {"E01-X1": {"trades": [{"net_rs": 50.0}, {"net_rs": -20.0}], "net_rs": 30.0}}},

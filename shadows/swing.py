@@ -298,27 +298,29 @@ def _rank_targets(kind, hist, nifty, industries):
     return [s for xs in best for _, s in sorted(xs, reverse=True)[:2]]
 
 
-def step(sid, led, day, hist, keys, charges, nifty=None, industries=None, news=None, week=None):
-    """One trading day for swing shadow `sid`. hist: {symbol: daily bars up to and including today}."""
+def step(sid, led, day, hist, keys, charges, nifty=None, industries=None, news=None, week=None, universe=None):
+    """One trading day for swing shadow `sid`. hist: {symbol: daily bars up to and including today} for every
+    priced stock (fills, values and exits); universe: the symbols new entries may come from (default: all)."""
     spec = STRATEGIES[sid]
     pf.fill_and_value(led, day, {s: d[-1] for s, d in hist.items() if d}, keys, charges, "swing")
     _exits(spec, led, day, hist, keys, charges)
     pf.revalue(led, day)
     closes = {s: d[-1]["close"] for s, d in hist.items() if d}
     kind = spec["kind"]
+    pool = hist if universe is None else {sym: hist[sym] for sym in universe if sym in hist}
     if kind in ("sector_rotation", "relative_strength"):
         if week is not None and led.get("week") != week:
             led["week"] = week
-            targets = _rank_targets(kind, hist, nifty, industries)
+            targets = _rank_targets(kind, pool, nifty, industries)
             pf.rebalance(led, targets, weight=1 / max(1, len(targets)) if kind == "sector_rotation" else 1 / MAX_HOLD,
                          closes=closes)
         return
     picks = []
     if kind in ("momentum", "momentum_top3"):
-        top = rank.swing(hist, top=3 if kind == "momentum_top3" else MAX_HOLD)
+        top = rank.swing(pool, top=3 if kind == "momentum_top3" else MAX_HOLD)
         picks = [(r["score"], r["symbol"], r["close"] - 2 * (r["atr"] or 0), None) for r in top]
     else:
-        for sym, d in hist.items():
+        for sym, d in pool.items():
             out = spec["entry"](d, sym in (news or set())) if kind == "news" else spec["entry"](d)
             if out:
                 picks.append((out[0], sym, out[1], out[2]))
