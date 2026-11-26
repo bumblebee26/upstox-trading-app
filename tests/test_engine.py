@@ -121,6 +121,7 @@ class EngineTest(unittest.TestCase):
         fill = self.events("fill")[0]
         self.assertIn("facts", fill)
         self.assertEqual(fill["pool"], "intraday")
+        self.assertIn("at", fill)  # IST fill time, replayed by the A01/A02 shadows
 
     def test_place_refused_if_price_ran_away(self):
         r = self.review()

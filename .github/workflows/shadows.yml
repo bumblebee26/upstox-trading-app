@@ -1,5 +1,6 @@
-# The intraday shadow strategies (paper tests, no Claude calls): every variant in docs/STRATEGIES.md on
-# today's 1-minute candles, after the close. Started by the AWS kicker at 16:10 IST; the cron is a backup.
+# The shadow strategies (paper tests, no Claude calls), after the close: every intraday variant in
+# docs/STRATEGIES.md on today's 1-minute candles, then the swing, long-term and NIFTYBEES shadows and the luck
+# lines. Started by the AWS kicker at 16:10 IST; the cron is a backup.
 name: Shadows
 
 on:
@@ -16,10 +17,10 @@ concurrency:
 
 jobs:
   shadows:
-    name: Intraday shadows
+    name: Shadows
     runs-on: ubuntu-latest
     environment: trading
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       UPX_STATE_BUCKET: upx-state-538498973473
       AWS_REGION: ap-southeast-2
@@ -39,6 +40,7 @@ jobs:
         run: |
           if python scripts/claim_session.py shadows; then
             python -m shadows.run
+            python -m shadows.daily
           fi
 
       - name: Tell Telegram if the shadows failed

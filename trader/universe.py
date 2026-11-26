@@ -9,11 +9,11 @@ from core import http, storage
 
 log = logging.getLogger("upx")
 
-NIFTY500_URLS = (
-    "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv",
-    "https://niftyindices.com/IndexConstituent/ind_nifty500list.csv",
+LIST_URLS = (
+    "https://nsearchives.nseindia.com/content/indices/ind_{name}list.csv",
+    "https://niftyindices.com/IndexConstituent/ind_{name}list.csv",
 )
-NIFTY500_KEY = "universe/nifty500.csv"  # the last good copy, used when NSE blocks the download
+LIST_KEY = "universe/{name}.csv"  # the last good copy, used when NSE blocks the download
 
 # niftyindices industry -> the Upstox NSE index that tracks it (names as Upstox lists them, 26 Nov 2026).
 # shortcut: banks sit inside "Financial Services" in this list, so they compare against Nifty Fin Service,
@@ -53,23 +53,30 @@ def parse_members(text):
             for r in rows if r.get("Symbol") and r.get("Series", "EQ").strip() == "EQ"}
 
 
-def nifty500(store=None):
-    """Today's Nifty 500 members. Tries NSE, then niftyindices, then the last good copy."""
+def index_list(name, store=None, minimum=45):
+    """Today's members of an NSE index list (nifty500, nifty50, niftynext50). Tries NSE, then niftyindices,
+    then the last good copy."""
     store = store or storage.backend()
-    for url in NIFTY500_URLS:
+    key = LIST_KEY.format(name=name)
+    for url in LIST_URLS:
+        url = url.format(name=name)
         try:
             text = http.request("GET", url, headers={"Accept": "text/csv"}, retries=2, timeout=30).decode("utf-8")
             members = parse_members(text)
-            if len(members) >= MIN_MEMBERS:  # a real list, not an error page
-                store.put(NIFTY500_KEY, text.encode())
+            if len(members) >= minimum:  # a real list, not an error page
+                store.put(key, text.encode())
                 return members
         except (RuntimeError, http.NotFound, UnicodeDecodeError) as err:
-            log.warning("Nifty 500 list from %s failed: %s", url, err)
-    saved = store.get(NIFTY500_KEY)
+            log.warning("%s list from %s failed: %s", name, url, err)
+    saved = store.get(key)
     if saved is None:
-        raise RuntimeError("Nifty 500 list unavailable: NSE and niftyindices refused, and no saved copy")
-    log.warning("using the saved Nifty 500 list")
+        raise RuntimeError(f"{name} list unavailable: NSE and niftyindices refused, and no saved copy")
+    log.warning("using the saved %s list", name)
     return parse_members(saved.decode("utf-8"))
+
+
+def nifty500(store=None):
+    return index_list("nifty500", store=store, minimum=MIN_MEMBERS)
 
 
 def baseline_row(daily):
