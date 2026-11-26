@@ -3,14 +3,16 @@
 # - Merge to main (or a manual run): plan again, then apply, only after the owner clicks Approve in the
 #   "infra" environment. The apply role exists only for that environment (infra/bootstrap/github.tf).
 # infra/bootstrap stays with the owner's PC: CI can never change the roles it signs in with.
+# infra/databricks (the lakehouse) is planned and applied in the same approved run, after infra/aws; the
+# Databricks token lives only in the "infra" environment, so pull requests show no Databricks plan.
 name: Terraform
 
 on:
   pull_request:
-    paths: ["infra/**", "lambdas/**", ".github/workflows/terraform.yml"]
+    paths: ["infra/**", "lambdas/**", "pipeline/**", ".github/workflows/terraform.yml"]
   push:
     branches: [main]
-    paths: ["infra/**", "lambdas/**", ".github/workflows/terraform.yml"]
+    paths: ["infra/**", "lambdas/**", "pipeline/**", ".github/workflows/terraform.yml"]
   workflow_dispatch:
 
 permissions:
@@ -90,3 +92,14 @@ jobs:
 
       - name: Apply exactly that plan
         run: terraform apply -no-color tfplan
+
+      - name: Databricks lakehouse (plan, then apply that plan)
+        if: vars.DATABRICKS_HOST != ''  # skipped until the owner adds the Databricks settings
+        working-directory: infra/databricks
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          terraform init
+          terraform plan -no-color -out=tfplan
+          terraform apply -no-color tfplan
