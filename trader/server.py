@@ -69,7 +69,8 @@ def screen(top: int = 20) -> list:
 @mcp.tool()
 def get_facts(symbol: str) -> dict:
     """The facts packet for one stock: day (VWAP, opening ranges, value area, relative volume), 5-minute,
-    15-minute and daily indicators and patterns, levels, the quote (spread, circuit room) and market context."""
+    15-minute and daily indicators and patterns, levels, the quote (spread, circuit room), market context and
+    the stock's NSE filings of the last 2 days (results, orders, board outcomes)."""
     return _safe(_e().get_facts, symbol.upper())
 
 

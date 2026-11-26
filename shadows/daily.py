@@ -66,6 +66,25 @@ def _benchmark(name, led, day, bars, keys, charges):
         pf.order_buy(led, BENCH, amount=min(pf.sip_amount(led), led["cash"]), stop=0.0, top_up=True)
 
 
+def nse_context(store, day, symbols, back_days=40):
+    """Each stock's NSE data from the files saved each evening (core/nse.py): delivery % by day, big BUY deals
+    and results days, for S12, S13 and S24."""
+    ctx = {s: {"deliv": {}, "buys": [], "results_days": set()} for s in symbols}
+    for back in range(1, back_days + 1):
+        d = (day - timedelta(days=back)).isoformat()
+        for sym, row in (storage.get_json(f"nse/{d}/bhav.json", {}, store=store) or {}).items():
+            if sym in ctx and row.get("deliv_pct") is not None:
+                ctx[sym]["deliv"][d] = row["deliv_pct"]
+        for name in ("bulk", "block"):
+            for r in storage.get_json(f"nse/{d}/{name}.json", [], store=store) or []:
+                if r.get("symbol") in ctx and r.get("side") == "BUY" and r.get("qty") and r.get("price"):
+                    ctx[r["symbol"]]["buys"].append({"day": r["day"], "price": r["price"], "value": r["qty"] * r["price"]})
+        for r in storage.get_json(f"nse/{d}/calendar.json", [], store=store) or []:
+            if r.get("symbol") in ctx and "result" in (r.get("purpose") or "").lower():
+                ctx[r["symbol"]]["results_days"].add(r["day"])
+    return ctx
+
+
 def _from_ledger(led):
     days, prev = {}, led["capital"]
     for d, v in led["equity"]:
@@ -135,11 +154,12 @@ def run_day(now=None, store=None, ux=upstox, tg=telegram, members=None, charges=
             priced[k] = charges(key, qty, pool, side, price)
         return priced[k]
 
+    nse_data = nse_context(store, day, set(liquid))
     led = book["ledgers"]
     week = f"{day.isocalendar()[0]}-{day.isocalendar()[1]:02d}"
     for sid in swing.STRATEGIES:
         swing.step(sid, led.setdefault(sid, pf.new(SWING_CAPITAL)), today, priced, keys, charge, nifty=nifty,
-                   industries=industries, news=news, week=week, universe=liquid)
+                   industries=industries, news=news, week=week, universe=liquid, nse=nse_data)
 
     due = [lid for lid in lt.STRATEGIES if lt.rebalance_due(lid, led.get(lid, {}), today)]
     data, index_members = {}, {}

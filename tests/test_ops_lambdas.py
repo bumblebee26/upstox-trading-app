@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core import journal, storage
 from lambdas import guardian, responder
-from tests.test_engine import DAY, FakeTg, FakeUx, council_fn
+from tests.test_engine import DAY, FakeTg, FakeUx, council_fn, fake_filings
 from trader import engine
 
 
@@ -14,7 +14,7 @@ class Base(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.store, self.ux, self.tg = storage.Local(self.dir), FakeUx(), FakeTg()
         e = engine.Engine(store=self.store, data_dir=self.dir, now=lambda: datetime(2026, 12, 14, 10, 0), ux=self.ux,
-                          tg=self.tg, council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None,
+                          tg=self.tg, council_fn=council_fn, filings=fake_filings, charges=lambda *a: 5.0, sleep=lambda s: None,
                           members={"ABC": {"industry": "Information Technology", "isin": "INEABC"}})
         e.start_day()  # writes the state and a 10:00 heartbeat
         r = e.review_trade(symbol="ABC", side="BUY", setup="ORB long", entry=500.0, stop=495.0, target=510.0,

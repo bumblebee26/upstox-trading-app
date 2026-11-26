@@ -72,6 +72,10 @@ class FakeTg:
         return out, offset + len(out)
 
 
+def fake_filings(symbol):
+    return [{"when": "14 Dec 09:05", "what": "Press Release", "detail": "New order"}] if symbol == "ABC" else []
+
+
 def council_fn(case, track):
     council_fn.cases.append(case)
     return {"yes_pct": 60.0, "members": {"skeptic": {"yes_pct": 50, "why": "-"}, "tape": {"yes_pct": 70, "why": "-"},
@@ -89,7 +93,7 @@ class EngineTest(unittest.TestCase):
         self.ux, self.tg = FakeUx(), FakeTg()
         council_fn.cases.clear()
         self.e = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
-                               council_fn=council_fn, charges=lambda key, qty, pool, side, price: 5.0,
+                               council_fn=council_fn, filings=fake_filings, charges=lambda key, qty, pool, side, price: 5.0,
                                sleep=lambda s: None, members={"ABC": {"industry": "Information Technology",
                                                                       "isin": "INEABC"}})
         self.e.start_day()
@@ -113,6 +117,7 @@ class EngineTest(unittest.TestCase):
         r = self.review()
         self.assertTrue(r["allowed"])
         self.assertNotIn("broke the 15-minute high", str(council_fn.cases[0].get("facts")))
+        self.assertEqual(council_fn.cases[0]["facts"]["filings"][0]["what"], "Press Release")  # NSE filings, 2 days
         placed = self.e.place_trade(r["review_id"], why="council and tape agree")
         self.assertEqual(placed["status"], "placed")
         pos = self.e.state["positions"]["ABC"]
@@ -245,7 +250,7 @@ class EngineTest(unittest.TestCase):
         self.e.place_trade(self.review()["review_id"], why="-")
         self.clock.t = datetime(2026, 12, 15, 9, 0)  # the afternoon session never ran
         again = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
-                              council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
+                              council_fn=council_fn, filings=fake_filings, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
         again.start_day()
         self.assertEqual(again.state["positions"], {})
         self.assertIn("carried", self.tg.sent[-2]["text"] + self.tg.sent[-1]["text"])
@@ -271,21 +276,21 @@ class EngineTest(unittest.TestCase):
     def test_started_after_the_close_means_no_session(self):
         self.clock.t = self.clock.t.replace(hour=21, minute=45)
         e = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
-                          council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
+                          council_fn=council_fn, filings=fake_filings, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
         self.assertIn("closed", e.start_day()["holiday"])
 
     def test_nse_holiday_means_no_session(self):
         self.ux.holiday_list = [{"date": DAY, "description": "Some festival", "holiday_type": "TRADING_HOLIDAY",
                                  "closed_exchanges": ["NSE", "BSE"]}]
         e = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
-                          council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
+                          council_fn=council_fn, filings=fake_filings, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
         self.assertEqual(e.start_day()["holiday"], "Some festival")
         self.assertIn("No session today: Some festival", self.tg.sent[-1]["text"])
 
     def test_restart_same_day_keeps_the_ledger(self):
         self.e.place_trade(self.review()["review_id"], why="-")
         again = engine.Engine(store=self.store, data_dir=self.dir, now=self.clock, ux=self.ux, tg=self.tg,
-                              council_fn=council_fn, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
+                              council_fn=council_fn, filings=fake_filings, charges=lambda *a: 5.0, sleep=lambda s: None, members={})
         again.start_day()
         self.assertIn("ABC", again.state["positions"])
         self.assertEqual(again.state["trades_today"], 1)

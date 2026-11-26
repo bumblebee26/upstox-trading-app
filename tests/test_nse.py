@@ -2,7 +2,7 @@
 import json
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime
 
 from core import http, nse, storage
 
@@ -33,6 +33,26 @@ class ParseTest(unittest.TestCase):
         cal = nse.parse_calendar([{"symbol": "TCS", "company": "TCS Ltd", "purpose": "Financial Results",
                                    "date": "28-Nov-2026"}, {"symbol": "BAD", "date": "soon"}])
         self.assertEqual(cal, [{"symbol": "TCS", "purpose": "Financial Results", "day": "2026-11-28"}])
+
+
+class FilingsTest(unittest.TestCase):
+    def test_a_stocks_last_two_days_newest_first(self):
+        rows = [{"symbol": "ABC", "desc": "Outcome of Board Meeting", "an_dt": "26-Nov-2026 18:00:00",
+                 "attchmntText": "Results for the quarter " + "x" * 400},
+                {"symbol": "ABC", "desc": "Press Release", "an_dt": "27-Nov-2026 09:05:00", "attchmntText": "New order"},
+                {"symbol": "ABC", "desc": "Old news", "an_dt": "20-Nov-2026 10:00:00", "attchmntText": "-"}]
+        urls = []
+        out = nse.filings("ABC", now=datetime(2026, 11, 27, 10, 0),
+                          fetch=lambda url: urls.append(url) or json.dumps(rows).encode())
+        self.assertIn("&symbol=ABC", urls[0])
+        self.assertEqual([f["what"] for f in out], ["Press Release", "Outcome of Board Meeting"])
+        self.assertEqual(out[0]["when"], "27 Nov 09:05")
+        self.assertLessEqual(len(out[1]["detail"]), 300)
+
+    def test_never_blocks_a_decision(self):
+        def down(url):
+            raise RuntimeError("NSE refused")
+        self.assertEqual(nse.filings("ABC", now=datetime(2026, 11, 27, 10, 0), fetch=down), [])
 
 
 class SaveTest(unittest.TestCase):
