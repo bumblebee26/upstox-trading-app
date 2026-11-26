@@ -1,6 +1,6 @@
 """Claim today's session phase once, so the manual start, the kicker and the cron backup can't run it twice.
 
-Usage: python scripts/claim_session.py morning|afternoon|swing|long_term   (exit code 1 if already claimed today)
+Usage: python scripts/claim_session.py morning|afternoon|swing|long_term|shadows   (exit code 1 if already claimed today)
 """
 import sys
 from datetime import datetime, timedelta, timezone
@@ -12,8 +12,8 @@ from core import storage  # noqa: E402
 
 if __name__ == "__main__":
     phase = sys.argv[1]
-    if phase not in ("morning", "afternoon", "swing", "long_term"):
-        sys.exit("phase must be morning, afternoon, swing or long_term")
+    if phase not in ("morning", "afternoon", "swing", "long_term", "shadows"):
+        sys.exit("phase must be morning, afternoon, swing, long_term or shadows")
     day = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
     if storage.backend().claim(f"claims/{day}-{phase}"):
         print(f"claimed {day} {phase}")

@@ -13,7 +13,7 @@ log.setLevel(logging.INFO)
 
 REPO = "bumblebee26/upstox-trading-app"
 TOKEN_PARAM = "/upx/github-dispatch-token"
-WORKFLOWS = {"trading-session.yml", "pools.yml"}
+WORKFLOWS = {"trading-session.yml", "pools.yml", "shadows.yml"}
 
 
 def handler(event, context):

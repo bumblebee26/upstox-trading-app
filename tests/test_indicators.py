@@ -79,6 +79,13 @@ class IntradayTest(unittest.TestCase):
         self.assertEqual((five[0]["open"], five[0]["close"], five[0]["volume"]), (100.0, 105.0, 5000))
         self.assertEqual(five[1]["ts"][11:16], "09:20")
 
+    def test_resample_stamps_the_slot_start_even_when_its_first_minute_is_missing(self):
+        candles = minutes(10, step=1.0)
+        del candles[5]  # no trade at 09:20
+        five = ind.resample(candles, 5)
+        self.assertEqual([b["ts"][11:16] for b in five], ["09:15", "09:20"])
+        self.assertEqual(five[1]["open"], candles[5]["open"])  # the slot's first trade (09:21) opens it
+
     def test_opening_range(self):
         r = ind.opening_range(minutes(30, step=1.0), 15)
         self.assertEqual((r["low"], r["high"]), (99.5, 115.5))

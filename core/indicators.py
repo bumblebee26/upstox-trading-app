@@ -136,13 +136,15 @@ def vwap(candles):
 
 
 def resample(candles, minutes):
-    """Merge 1-minute candles into `minutes`-minute candles aligned to 09:15."""
+    """Merge 1-minute candles into `minutes`-minute candles aligned to 09:15. Each bar is stamped with its
+    slot's start time, even if the slot's first minute had no trade (Upstox leaves such minutes out)."""
     out = {}
     for c in candles:
         slot = _minute_of_session(c) // minutes
         b = out.get(slot)
         if b is None:
-            out[slot] = dict(c)
+            h, m = divmod(9 * 60 + 15 + slot * minutes, 60)
+            out[slot] = dict(c, ts=f"{c['ts'][:11]}{h:02d}:{m:02d}{c['ts'][16:]}")
         else:
             b.update(high=max(b["high"], c["high"]), low=min(b["low"], c["low"]), close=c["close"],
                      volume=b["volume"] + c["volume"])
