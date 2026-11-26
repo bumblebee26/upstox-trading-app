@@ -29,7 +29,8 @@ def main():
         "market_status": lambda: upstox.market_status()["status"],
         "fii": lambda: len(upstox.flows("fii", "NSE_EQ|CASH")),
         "dii": lambda: len(upstox.flows("dii", "NSE_EQ|CASH")),
-        "charges": lambda: upstox.charges(key, 10, "I", "BUY", 1000)["total"],
+        "charges": lambda: upstox.charges(key, 10, "I", "BUY", 1000),
+        "charges delivery sell": lambda: upstox.charges(key, 10, "D", "SELL", 1000),
         "news": lambda: f"{len(upstox.news([key]).get(key, []))} items",
         **{kind: (lambda k=kind: "ok" if upstox.fundamentals(isin, k) is not None else "empty")
            for kind in upstox.FUNDAMENTALS},
