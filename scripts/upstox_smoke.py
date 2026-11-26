@@ -11,6 +11,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import upstox  # noqa: E402
+from trader import facts  # noqa: E402
+
+
+def _packet(key, nifty, today):
+    daily = upstox.historical_candles(key, "days", 1, today - timedelta(days=400), today - timedelta(days=1))
+    quote = upstox.quotes([key])[key]
+    p = facts.packet("RELIANCE", upstox.intraday_candles(key, 1), daily, quote,
+                     nifty_1m=upstox.intraday_candles(nifty, 1))
+    return {"price": p["price"], "vwap": p["day"]["vwap"], "5m": {k: p["tf"]["5m"][k] for k in ("rsi14", "adx")},
+            "daily": {k: p["tf"]["daily"][k] for k in ("ema200", "rsi14", "candles")}, "levels": p["levels"]["pivots"],
+            "spread_pct": p["quote"]["spread_pct"], "size_chars": len(str(p))}
 
 
 def main():
@@ -32,6 +43,7 @@ def main():
         "charges": lambda: upstox.charges(key, 10, "I", "BUY", 1000),
         "charges delivery sell": lambda: upstox.charges(key, 10, "D", "SELL", 1000),
         "news": lambda: f"{len(upstox.news([key]).get(key, []))} items",
+        "facts packet": lambda: _packet(key, nifty, today),
         **{kind: (lambda k=kind: "ok" if upstox.fundamentals(isin, k) is not None else "empty")
            for kind in upstox.FUNDAMENTALS},
     }
