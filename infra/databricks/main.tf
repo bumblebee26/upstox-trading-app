@@ -1,12 +1,12 @@
 # The lakehouse in Databricks Free Edition: inside catalog upx, the schemas bronze, silver and gold, the landing volume the sync
-# fills (lakehouse/sync.py), and three pipelines built from pipeline/<name>/*.sql. Applied by GitHub Actions after a
+# fills (lakehouse/sync.py), and three PySpark pipelines built from pipeline/<name>/*.py. Applied by GitHub Actions after a
 # merge to main, once the owner approves the "infra" environment; it signs in with DATABRICKS_HOST and
 # DATABRICKS_TOKEN (the token is created by the owner and never sits in Terraform state).
 provider "databricks" {}
 
 locals {
   repo_root      = "${path.module}/../.."
-  pipeline_files = fileset(local.repo_root, "pipeline/**/*.sql")
+  pipeline_files = fileset(local.repo_root, "pipeline/**/*.py")
   # Each pipeline is run by lakehouse/sync.py only at its own times and only when its folders got new files.
   pipelines = {
     trading = "the real pools (journals, balances) and the Telegram feed; 13:05 and 16:55 IST"
