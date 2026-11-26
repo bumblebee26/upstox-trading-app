@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 30
     env:
       UPX_STATE_BUCKET: upx-state-538498973473
+      PYTHONUNBUFFERED: "1"
       AWS_REGION: ap-southeast-2
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
