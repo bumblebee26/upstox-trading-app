@@ -125,6 +125,7 @@ locals {
     "upx-afternoon-session" = ["cron(27 12 ? * MON-FRI *)", "trading-session.yml", { phase = "afternoon" }]
     "upx-pools-daily"       = ["cron(50 15 ? * MON-FRI *)", "pools.yml", { pools = "swing long_term" }]
     "upx-long-term-weekly"  = ["cron(15 10 ? * SAT *)", "pools.yml", { pools = "long_term" }]
+    "upx-shadows-daily"     = ["cron(10 16 ? * MON-FRI *)", "shadows.yml", {}]
   }
 }
 
