@@ -1,0 +1,48 @@
+"""The journal: every event (proposal, decision, fill, exit, block) appended to one JSON-lines file a day.
+
+Append-only, so nothing is ever overwritten. Each event has an event_id; if the same event is written
+again (a re-sent report, a retried export), readers keep only the newest copy, so it is counted once.
+
+shortcut: local files only (base_dir, default ./data); PR 9 adds the copy to the state bucket.
+"""
+import json
+import os
+import threading
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+_lock = threading.Lock()  # the session writes from several threads (lesson of 25 Nov: unlocked appends mixed lines)
+
+
+def _path(day, base_dir):
+    return Path(base_dir or os.environ.get("UPX_DATA_DIR", "data")) / "journal" / f"{day}.jsonl"
+
+
+def append(day, event, *, base_dir=None, event_id=None, **fields):
+    """Write one event for `day` (YYYY-MM-DD) and return its event_id."""
+    row = {"event": event, "event_id": event_id or uuid.uuid4().hex,
+           "written_at": datetime.now().isoformat(timespec="seconds"), **fields}
+    path = _path(day, base_dir)
+    line = json.dumps(row, ensure_ascii=False) + "\n"
+    with _lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line)
+    return row["event_id"]
+
+
+def read(day, *, base_dir=None):
+    """The day's events in order, each event_id once (the newest copy)."""
+    path = _path(day, base_dir)
+    if not path.exists():
+        return []
+    latest = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:  # a line cut short by a crash; every complete event is still read
+            continue
+        latest.pop(row["event_id"], None)  # re-insert so the newest copy keeps its place at the end
+        latest[row["event_id"]] = row
+    return list(latest.values())
