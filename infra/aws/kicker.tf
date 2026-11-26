@@ -27,8 +27,8 @@ resource "aws_iam_role" "kicker" {
 # message to the app's feed, and write its own logs.
 data "aws_iam_policy_document" "kicker" {
   statement {
-    sid       = "ReadDispatchToken"
-    actions   = ["ssm:GetParameter"]
+    sid     = "ReadDispatchToken"
+    actions = ["ssm:GetParameter"]
     resources = [for p in ["github-dispatch-token", "telegram-bot-token-v2", "telegram-chat-id"] :
     "arn:aws:ssm:ap-southeast-2:${local.account_id}:parameter/upx/${p}"]
   }
@@ -107,7 +107,7 @@ resource "aws_iam_role_policy" "scheduler" {
   name = "upx-scheduler"
   role = aws_iam_role.scheduler.id
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
       Action   = "lambda:InvokeFunction"
