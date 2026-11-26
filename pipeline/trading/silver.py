@@ -39,7 +39,7 @@ def trades():
     ev = spark.read.table("silver.trade_events")  # noqa: F821
     setups = ev.where("event = 'review'").groupBy("review_id").agg(F.any_value("setup").alias("setup"))
     ratings = ev.where("event = 'rating'").groupBy("review_id").agg(F.max_by("rating", "written_at").alias("rating"))
-    return (ev.where("event = 'exit'")
+    return (ev.where("event = 'exit'").drop("setup", "rating")  # an exit carries neither; they come from the review
             .join(setups, "review_id", "left").join(ratings, "review_id", "left")
             .select("trade_date", "pool", "symbol", "qty", F.col("price").alias("exit_price"), "net_rs",
                     "charges_rs", F.col("reason").alias("exit_reason"), "review_id",
