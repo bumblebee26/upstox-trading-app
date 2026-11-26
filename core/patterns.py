@@ -109,10 +109,10 @@ def chart(cs):
         move = pole[-1]["close"] - pole[0]["open"]
         hi, lo = max(c["high"] for c in flag), min(c["low"] for c in flag)
         quiet = hi - lo <= 0.5 * abs(move)
-        if move >= 4 * usual and quiet and lo >= pole[-1]["close"] - 0.5 * move:
+        if move > 0 and move >= 4 * usual and quiet and lo >= pole[-1]["close"] - 0.5 * move:
             found.append("bull_flag")
             break
-        if -move >= 4 * usual and quiet and hi <= pole[-1]["close"] - 0.5 * move:
+        if move < 0 and -move >= 4 * usual and quiet and hi <= pole[-1]["close"] - 0.5 * move:
             found.append("bear_flag")
             break
     if len(cs) >= 8:

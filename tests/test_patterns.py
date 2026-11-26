@@ -59,6 +59,11 @@ class ChartTest(unittest.TestCase):
         base = [c(100, 101, 99, 100)] * 15
         self.assertIn("bull_flag", pat.chart(base + pole + flag))
 
+    def test_frozen_price_is_not_a_flag(self):  # a stock stuck at its circuit limit
+        found = pat.chart([c(100, 100, 100, 100)] * 40)
+        self.assertNotIn("bull_flag", found)
+        self.assertNotIn("bear_flag", found)
+
     def test_contracting_triangle(self):
         tri = [c(100, 110 - i, 90 + i, 100) for i in range(8)]
         self.assertIn("triangle", pat.chart([c(100, 110, 90, 100)] * 6 + tri))
