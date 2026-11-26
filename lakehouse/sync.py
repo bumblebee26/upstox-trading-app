@@ -122,7 +122,7 @@ def due(pending, wanted, force=False):
     return [p for p in wanted if force or pending.get(p)]
 
 
-def start_pipeline(short):
+def start_pipeline(short, sleep=time.sleep, every=20, limit=90):
     name = f"upx-{short}"
     query = urllib.parse.urlencode({"filter": f"name LIKE '{name}'"})
     found = json.loads(http.request("GET", f"{_host()}/api/2.0/pipelines?{query}", headers=_auth(),
@@ -130,10 +130,20 @@ def start_pipeline(short):
     ids = [p["pipeline_id"] for p in found.get("statuses", []) if p.get("name") == name]
     if not ids:
         raise RuntimeError(f"pipeline {name} not found; apply infra/databricks first")
-    started = json.loads(http.request("POST", f"{_host()}/api/2.0/pipelines/{ids[0]}/updates", data=b"{}",
-                                      headers=dict(_auth(), **{"Content-Type": "application/json"}),
-                                      log_url="databricks start update"))
-    return ids[0], started.get("update_id")
+    for _ in range(limit):
+        try:
+            started = json.loads(http.request("POST", f"{_host()}/api/2.0/pipelines/{ids[0]}/updates", data=b"{}",
+                                              headers=dict(_auth(), **{"Content-Type": "application/json"}),
+                                              log_url="databricks start update"))
+            return ids[0], started.get("update_id")
+        except RuntimeError as err:
+            if "ACTIVE_UPDATE_EXISTS" not in str(err):
+                raise
+        # a run is already going (started by hand or a slow earlier one): wait for it, then start ours
+        while json.loads(http.request("GET", f"{_host()}/api/2.0/pipelines/{ids[0]}", headers=_auth(),
+                                      log_url="databricks pipeline state")).get("state") not in ("IDLE", "FAILED"):
+            sleep(every)
+    raise RuntimeError(f"{name} stayed busy; not started")
 
 
 def wait(pipeline_id, update_id, sleep=time.sleep, every=20, limit=60):

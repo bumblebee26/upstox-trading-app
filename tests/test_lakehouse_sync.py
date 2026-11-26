@@ -82,6 +82,29 @@ class DueTest(unittest.TestCase):
         self.assertEqual(sync.due({}, ["market"], force=True), ["market"])
 
 
+class BusyTest(unittest.TestCase):
+    def test_waits_for_a_run_already_going_then_starts(self):
+        import os
+        from unittest import mock
+        posts, states = [], iter(["RUNNING", "IDLE"])
+
+        def fake(method, url, **kw):
+            if "pipelines?" in url:
+                return json.dumps({"statuses": [{"name": "upx-trading", "pipeline_id": "p1"}]}).encode()
+            if method == "POST":
+                posts.append(url)
+                if len(posts) == 1:
+                    raise RuntimeError('HTTP 409 from POST databricks start update: b\'{"error_code":'
+                                       '"INVALID_STATE_TRANSITION","reason":"ACTIVE_UPDATE_EXISTS_FOR_PIPELINE"}\'')
+                return b'{"update_id": "u2"}'
+            return json.dumps({"state": next(states)}).encode()
+
+        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "https://h", "DATABRICKS_TOKEN": "t"}), \
+                mock.patch.object(sync.http, "request", side_effect=fake):
+            self.assertEqual(sync.start_pipeline("trading", sleep=lambda s: None), ("p1", "u2"))
+        self.assertEqual(len(posts), 2)
+
+
 class WaitTest(unittest.TestCase):
     def test_waits_for_the_update_and_reports_errors(self):
         import os
