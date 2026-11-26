@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "trader": {
+      "command": "python",
+      "args": ["-m", "trader.server"]
+    }
+  }
+}

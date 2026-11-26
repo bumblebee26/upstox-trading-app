@@ -3,7 +3,8 @@
 Append-only, so nothing is ever overwritten. Each event has an event_id; if the same event is written
 again (a re-sent report, a retried export), readers keep only the newest copy, so it is counted once.
 
-shortcut: local files only (base_dir, default ./data); PR 9 adds the copy to the state bucket.
+Writes go to a local file first (fast, locked); with a mirror (the state bucket) the whole day file is
+copied there after each event, and restore() brings it back on a fresh GitHub runner.
 """
 import json
 import os
@@ -19,7 +20,7 @@ def _path(day, base_dir):
     return Path(base_dir or os.environ.get("UPX_DATA_DIR", "data")) / "journal" / f"{day}.jsonl"
 
 
-def append(day, event, *, base_dir=None, event_id=None, **fields):
+def append(day, event, *, base_dir=None, mirror=None, event_id=None, **fields):
     """Write one event for `day` (YYYY-MM-DD) and return its event_id."""
     row = {"event": event, "event_id": event_id or uuid.uuid4().hex,
            "written_at": datetime.now().isoformat(timespec="seconds"), **fields}
@@ -29,7 +30,18 @@ def append(day, event, *, base_dir=None, event_id=None, **fields):
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(line)
+        if mirror is not None:
+            mirror.put(f"journal/{day}.jsonl", path.read_bytes())
     return row["event_id"]
+
+
+def restore(day, *, base_dir=None, mirror):
+    """Copy the day's journal from the mirror to the local file, if the local one is missing."""
+    path = _path(day, base_dir)
+    body = mirror.get(f"journal/{day}.jsonl")
+    if body is not None and not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
 
 
 def read(day, *, base_dir=None):

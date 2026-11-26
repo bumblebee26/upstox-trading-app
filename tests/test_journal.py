@@ -40,6 +40,15 @@ class JournalTest(unittest.TestCase):
             f.write('{"event": "exit", "event_id": "x", "net')
         self.assertEqual(len(journal.read("2026-12-14", base_dir=self.dir)), 1)
 
+    def test_mirror_copies_the_day_file_and_restore_brings_it_back(self):
+        from core import storage
+        remote = storage.Local(tempfile.mkdtemp())
+        journal.append("2026-12-14", "exit", base_dir=self.dir, mirror=remote, net_rs=5.0)
+        self.assertIsNotNone(remote.get("journal/2026-12-14.jsonl"))
+        fresh_dir = tempfile.mkdtemp()  # a new GitHub runner starts empty
+        journal.restore("2026-12-14", base_dir=fresh_dir, mirror=remote)
+        self.assertEqual(len(journal.read("2026-12-14", base_dir=fresh_dir)), 1)
+
     def test_missing_day_is_empty(self):
         self.assertEqual(journal.read("2026-01-01", base_dir=self.dir), [])
 

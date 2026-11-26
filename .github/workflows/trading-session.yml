@@ -1,0 +1,63 @@
+# The AI trading session (paper money). Morning 09:00-12:25 and afternoon 12:27-15:15 IST, Mon-Fri.
+# Started by hand from the Actions tab until PR 9's AWS kicker; the cron below is only a backup
+# (GitHub can run it late). Each phase runs once a day (scripts/claim_session.py).
+name: Trading session
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: morning or afternoon
+        type: choice
+        options: [morning, afternoon]
+        default: morning
+  schedule:
+    - cron: "30 3 * * 1-5"  # 09:00 IST morning backup
+    - cron: "57 6 * * 1-5"  # 12:27 IST afternoon backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trading-session
+  cancel-in-progress: false
+
+jobs:
+  session:
+    name: Trading session
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 240
+    env:
+      PHASE: ${{ inputs.phase || (github.event.schedule == '30 3 * * 1-5' && 'morning' || 'afternoon') }}
+      UPX_STATE_BUCKET: upx-state-538498973473
+      UPX_DATA_DIR: data
+      AWS_REGION: ap-southeast-2
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the MCP server's libraries and Claude Code
+        run: |
+          python -m pip install --quiet -r requirements.txt
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Claim today's phase (stops a second run)
+        id: claim
+        run: python scripts/claim_session.py "$PHASE"
+
+      - name: Run the AI trader
+        run: |
+          claude -p "$(cat prompts/session.md)
+
+          Session phase: $PHASE." \
+            --append-system-prompt "$(cat .claude/skills/intraday-playbook/SKILL.md)" \
+            --mcp-config .github/mcp-trader.json \
+            --allowedTools "mcp__trader" \
+            --disallowedTools "Bash" "Edit" "Write" "Read" "WebFetch" "WebSearch"
