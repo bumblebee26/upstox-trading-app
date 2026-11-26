@@ -54,7 +54,8 @@ class DeliveryPool:
         self.notes = []
 
     def _journal(self, event, **fields):
-        journal.append(self.day, event, base_dir=self.data_dir, mirror=self.store, pool=self.pool, **fields)
+        journal.append(self.day, event, base_dir=self.data_dir, mirror=self.store, name=self.pool, pool=self.pool,
+                       **fields)
 
     def _gate(self, sym, entry, stop, target):
         key = self.ins["eq"][sym]["key"]
@@ -91,6 +92,7 @@ class DeliveryPool:
         self.ins = self.ux.instruments()
         if self.members is None:
             self.members = universe.nifty500(store=self.store)
+        journal.restore(self.day, base_dir=self.data_dir, mirror=self.store, name=self.pool)
         self.state = storage.get_json(self.key, store=self.store) or ledger.new_pool(self.pool)
         self.state.setdefault("pending", [])
         if trading_day:
@@ -106,7 +108,16 @@ class DeliveryPool:
                 close = (quotes.get(sym) or {}).get("last_price")
                 if close is not None and close <= p["stop"]:
                     self._exit(sym, close, "stop", "closed under its stop")
-        decided = self._decide(quotes, trading_day) if self._decision_day(now, trading_day) else None
+        storage.put_json(self.key, self.state, store=self.store)  # fills and stops are saved before any decision
+        decided = None
+        try:
+            if self._decision_day(now, trading_day):
+                decided = self._decide(quotes, trading_day)
+        except Exception as err:  # noqa: BLE001 - a failed decision must never lose the day's fills
+            log.exception("decision failed")
+            self.state["pending"] = []
+            self.notes.append(f"⚠️ decision failed ({type(err).__name__}: {str(err)[:120]}); no new orders today")
+            self._journal("decision_failed", error=str(err)[:300])
         storage.put_json(self.key, self.state, store=self.store)
         self._report(decided)
         return {"pending": self.state["pending"], "notes": self.notes, "decided": decided is not None}

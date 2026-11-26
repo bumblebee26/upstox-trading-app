@@ -49,6 +49,14 @@ class JournalTest(unittest.TestCase):
         journal.restore("2026-12-14", base_dir=fresh_dir, mirror=remote)
         self.assertEqual(len(journal.read("2026-12-14", base_dir=fresh_dir)), 1)
 
+    def test_two_writers_never_overwrite_each_other(self):
+        from core import storage
+        remote = storage.Local(tempfile.mkdtemp())
+        journal.append("2026-12-14", "exit", base_dir=tempfile.mkdtemp(), mirror=remote, net_rs=1.0)  # intraday
+        journal.append("2026-12-14", "fill", base_dir=tempfile.mkdtemp(), mirror=remote, name="swing")  # another runner
+        self.assertEqual(remote.get("journal/2026-12-14.jsonl").count(b"\n"), 1)        # intraday's file intact
+        self.assertEqual(remote.get("journal/2026-12-14-swing.jsonl").count(b"\n"), 1)  # swing's own file
+
     def test_missing_day_is_empty(self):
         self.assertEqual(journal.read("2026-01-01", base_dir=self.dir), [])
 

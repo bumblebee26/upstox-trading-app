@@ -78,7 +78,7 @@ class PoolsTest(unittest.TestCase):
                                   members={"ABC": {"industry": "IT"}, "XYZ": {"industry": "Auto"}})
 
     def events(self, day, name):
-        return [e for e in journal.read(day, base_dir=self.dir) if e["event"] == name]
+        return [e for e in journal.read(day, base_dir=self.dir, name="swing") if e["event"] == name]
 
     def test_decision_today_fill_at_next_open(self):
         out = self.job().run_day()
@@ -136,6 +136,18 @@ class PoolsTest(unittest.TestCase):
     def test_long_term_weekday_without_news_makes_no_decision(self):
         self.job("long_term").run_day()
         self.assertEqual(self.plans, [])
+
+    def test_a_failed_decision_still_saves_the_days_fills(self):
+        self.job().run_day()
+        self.clock.t = datetime(2026, 12, 15, 15, 50)
+        job = self.job()
+        job.decide_fn = lambda pool, ctx: (_ for _ in ()).throw(TimeoutError("claude took too long"))
+        out = job.run_day()
+        st = storage.get_json("state/swing.json", store=self.store)
+        self.assertIn("ABC", st["positions"])  # the fill at today's open is kept
+        self.assertEqual(st["pending"], [])
+        self.assertFalse(out["decided"])
+        self.assertIn("decision failed", " ".join(out["notes"]))
 
     def test_holiday(self):
         self.ux.hols = [{"date": "2026-12-14", "holiday_type": "TRADING_HOLIDAY", "closed_exchanges": ["NSE"],
