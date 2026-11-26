@@ -36,6 +36,7 @@ class HttpTest(unittest.TestCase):
     def serve(self, *replies):
         srv = _Server(replies)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
         return srv, f"http://127.0.0.1:{srv.server_port}/x"
 
