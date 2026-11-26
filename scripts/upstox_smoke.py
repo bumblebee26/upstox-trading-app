@@ -32,6 +32,7 @@ def main():
     today = date.today()
     checks = {
         "instruments": lambda: f"{len(m['eq'])} stocks, {len(m['index'])} indices",
+        "nse indices": lambda: sorted(m["index"]),
         "quotes": lambda: upstox.quotes([key, nifty])[key]["last_price"],
         "intraday_candles": lambda: f"{len(upstox.intraday_candles(key))} candles today",
         "historical minutes": lambda: len(upstox.historical_candles(key, "minutes", 5, today - timedelta(days=7), today)),
