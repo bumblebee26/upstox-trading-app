@@ -70,6 +70,18 @@ class SyncTest(unittest.TestCase):
         self.assertGreater(len(sent), 5)
 
 
+class DueTest(unittest.TestCase):
+    def test_each_pipeline_runs_only_for_its_own_new_files(self):
+        self.assertEqual(sync.pipeline_of("journal/2026-12-14.jsonl"), "trading")
+        self.assertEqual(sync.pipeline_of("shadow_status/2026-12-14.jsonl"), "shadows")
+        self.assertEqual(sync.pipeline_of("nse_bhav/2026-12-14.jsonl"), "market")
+        pending = sync.mark_pending({}, ["journal/2026-12-14.jsonl", "feed/2026-12-14.jsonl"])
+        self.assertEqual(pending, {"trading": True})
+        self.assertEqual(sync.due(pending, ["shadows"]), [])        # 17:30 slot: nothing new for shadows
+        self.assertEqual(sync.due(pending, ["trading"]), ["trading"])
+        self.assertEqual(sync.due({}, ["market"], force=True), ["market"])
+
+
 class WaitTest(unittest.TestCase):
     def test_waits_for_the_update_and_reports_errors(self):
         import os

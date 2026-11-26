@@ -50,14 +50,18 @@ def _day(text, fmt):
 
 
 def parse_bhav(text):
-    """{symbol: {close, volume, deliv_qty, deliv_pct}} for the EQ series ("-" means not reported)."""
+    """{symbol: {open, high, low, close, prev_close, volume, turnover_lacs, deliv_qty, deliv_pct}} for the EQ
+    series ("-" means not reported)."""
     out = {}
     for r in csv.DictReader(io.StringIO(text), skipinitialspace=True):
         r = {k.strip(): (v or "").strip() for k, v in r.items() if k}
         if r.get("SERIES") != "EQ":
             continue
         qty, pct = _num(r.get("DELIV_QTY")), _num(r.get("DELIV_PER"))
-        out[r["SYMBOL"]] = {"close": _num(r.get("CLOSE_PRICE")), "volume": int(_num(r.get("TTL_TRD_QNTY")) or 0),
+        out[r["SYMBOL"]] = {"open": _num(r.get("OPEN_PRICE")), "high": _num(r.get("HIGH_PRICE")),
+                            "low": _num(r.get("LOW_PRICE")), "close": _num(r.get("CLOSE_PRICE")),
+                            "prev_close": _num(r.get("PREV_CLOSE")), "volume": int(_num(r.get("TTL_TRD_QNTY")) or 0),
+                            "turnover_lacs": _num(r.get("TURNOVER_LACS")),
                             "deliv_qty": int(qty) if qty is not None else None, "deliv_pct": pct}
     return out
 
