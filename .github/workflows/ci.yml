@@ -36,3 +36,40 @@ jobs:
 
       - name: Check that nothing names a paper-trader or stocks_lakehouse resource
         run: python3 scripts/check_isolation.py
+
+  terraform-fmt:
+    name: terraform fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.x"
+          terraform_wrapper: false
+
+      - name: Check formatting (fix locally with "terraform fmt -recursive infra")
+        run: terraform fmt -check -recursive -diff infra
+
+  terraform-validate:
+    name: terraform validate (${{ matrix.stack }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [bootstrap, aws, modules/secure_bucket]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.x"
+          terraform_wrapper: false
+
+      - name: Validate
+        working-directory: infra/${{ matrix.stack }}
+        run: |
+          terraform init -input=false -backend=false
+          terraform validate -no-color
