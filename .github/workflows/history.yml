@@ -1,5 +1,6 @@
 # One-time: copy the old system's NSE, US and macro history files into /Volumes/upx/bronze/history and print
-# an inventory (dummy-money paper trader). Run by hand from the Actions tab; safe to run again.
+# an inventory (dummy-money paper trader). Run by hand from the Actions tab; safe to run again, and it follows
+# a copy already running in Databricks instead of starting a second one.
 name: History copy
 
 on:
@@ -13,7 +14,7 @@ jobs:
     name: Copy history (Databricks job upx-history-copy)
     runs-on: ubuntu-latest
     environment: trading
-    timeout-minutes: 90
+    timeout-minutes: 330
     env:
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}

@@ -18,13 +18,15 @@ def _call(method, path, body=None):
                                    log_url=f"databricks {path.split('?')[0]}"))
 
 
-def run(name, sleep=time.sleep, every=20, limit=180):
-    """Run job `name` once; return (result state, the task's printed output)."""
+def run(name, sleep=time.sleep, every=30, limit=600):
+    """Run job `name` once (or follow its run already going); return (result state, the task's printed output).
+    Waits up to limit x every seconds (5 hours), inside GitHub's 6-hour job limit."""
     found = _call("GET", "/api/2.1/jobs/list?" + urllib.parse.urlencode({"name": name}))
     ids = [j["job_id"] for j in found.get("jobs", []) if j["settings"]["name"] == name]
     if not ids:
         raise RuntimeError(f"job {name} not found; apply infra/databricks first")
-    run_id = _call("POST", "/api/2.1/jobs/run-now", {"job_id": ids[0]})["run_id"]
+    going = _call("GET", f"/api/2.1/jobs/runs/list?job_id={ids[0]}&active_only=true").get("runs") or []
+    run_id = going[0]["run_id"] if going else _call("POST", "/api/2.1/jobs/run-now", {"job_id": ids[0]})["run_id"]
     for _ in range(limit):
         info = _call("GET", f"/api/2.1/jobs/runs/get?run_id={run_id}")
         if info["state"]["life_cycle_state"] in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR"):

@@ -63,10 +63,11 @@ FRED, Yahoo (world tiles only), IBJA, CarDekho, RBI, SEBI, Business Standard.
   minute, swing and long-term at each close. Long-term also has a −25% floor if the AI's stop is not tighter.
 - Every decision is saved with its facts packet so it can be replayed.
 
-**History kept (owner, 27 Nov): files, never tables.** The old landing volume's NSE (bhavcopy, delivery,
-indices, F&O list), fundamentals, index members, US (Massive) and FRED files are copied once to
-`/Volumes/upx/bronze/history/` and loaded by the new pipelines, so backtests can use years of data. The old trader
-journals, pools and Yahoo data are not copied.
+**History kept (owner, 27 Nov): files, never tables.** The old landing volume's NSE bhavcopy (2019 on), delivery
+(Aug 2019 on), indices (2019 on, incl. India VIX) and US daily (Massive, Nov 2024 on) are copied once to
+`/Volumes/upx/bronze/history/` and loaded by `upx-market` (`nse_eq_daily`, `nse_index_daily`, `us_daily`), so
+backtests can use years of data. Not kept: FRED, index members, the F&O list, fundamentals (Yahoo), news, and the
+old trader journals and pools.
 
 **Shadows (paper, rule-based, no Claude calls).** About 60 intraday, 25 swing and 18 long-term strategies, listed in
 `docs/STRATEGIES.md` before any are built; regime overlays (VIX band, breadth, Nifty vs 200-day average);

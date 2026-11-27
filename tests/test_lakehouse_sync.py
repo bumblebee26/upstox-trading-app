@@ -105,6 +105,31 @@ class BusyTest(unittest.TestCase):
         self.assertEqual(len(posts), 2)
 
 
+class AttachTest(unittest.TestCase):
+    def test_follows_a_run_already_going_instead_of_starting_another(self):
+        import os
+        from unittest import mock
+        from lakehouse import jobs
+        calls = []
+
+        def fake(method, url, **kw):
+            calls.append((method, url))
+            if "/jobs/list" in url:
+                return json.dumps({"jobs": [{"job_id": 7, "settings": {"name": "upx-history-copy"}}]}).encode()
+            if "/runs/list" in url:
+                return b'{"runs": [{"run_id": 55}]}'
+            if "/runs/get-output" in url:
+                return b'{"logs": "done"}'
+            return json.dumps({"state": {"life_cycle_state": "TERMINATED", "result_state": "SUCCESS"},
+                               "tasks": [{"run_id": 56}]}).encode()
+
+        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "https://h", "DATABRICKS_TOKEN": "t"}), \
+                mock.patch.object(jobs.http, "request", side_effect=fake):
+            self.assertEqual(jobs.run("upx-history-copy", sleep=lambda s: None)[0], "SUCCESS")
+        self.assertFalse([u for m, u in calls if "run-now" in u])
+        self.assertIn(("GET", "https://h/api/2.1/jobs/runs/get?run_id=55"), calls)
+
+
 class WaitTest(unittest.TestCase):
     def test_waits_for_the_update_and_reports_errors(self):
         import os
@@ -135,6 +160,8 @@ class JobTest(unittest.TestCase):
             calls.append((method, url))
             if "/jobs/list" in url:
                 return json.dumps({"jobs": [{"job_id": 7, "settings": {"name": "upx-history-copy"}}]}).encode()
+            if "/runs/list" in url:
+                return b'{"runs": []}'
             if "/run-now" in url:
                 return b'{"run_id": 70}'
             if "/runs/get-output" in url:
