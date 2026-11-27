@@ -60,7 +60,9 @@ def nse_index_daily():
 @dp.materialized_view(name="silver.us_daily",
                       comment="US daily bars per ticker (Massive grouped daily), from the copied history (Nov 2024 on).")
 def us_daily():
-    bar = "array<struct<T:string,o:double,h:double,l:double,c:double,v:double,vw:double,n:bigint,t:bigint>>"
+    # no "t" (timestamp): Spark matches names case-insensitively, so it would clash with "T" (ticker); the day
+    # comes from the date= folder instead
+    bar = "array<struct<T:string,o:double,h:double,l:double,c:double,v:double,vw:double,n:bigint>>"
     return (spark.read.table("bronze.hist_us_raw")  # noqa: F821
             .select("trade_date", F.explode(F.from_json("results", bar)).alias("r"))
             .select(F.col("trade_date").alias("day"), F.col("r.T").alias("symbol"), F.col("r.o").alias("open"),
