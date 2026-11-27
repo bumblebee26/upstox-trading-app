@@ -6,7 +6,7 @@ and squares everything off at 15:10. Every decision is journaled with its facts 
 """
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from core import costs, journal, nse, storage, upstox
 from trader import council, facts, ledger, messages, risk, screen, telegram, universe
@@ -36,6 +36,7 @@ class Engine:
         self.members, self.filings = members, filings
         self._daily, self._market, self._answers = {}, {}, {}
         self._beat = None
+        self._warm = {}
 
     # ---- state ---------------------------------------------------------------------------------------------
     def _day(self):
@@ -105,6 +106,18 @@ class Engine:
                                                              today - timedelta(days=1))
         return self._daily[symbol]
 
+    def _warm_1m(self, symbol, daily):
+        """The previous trading day's 1-minute candles (one call per stock per day), so the 5m and 15m indicators
+        are ready at 09:15. A failure gives [] and the indicators simply warm up later in the day."""
+        if symbol not in self._warm:
+            day = date.fromisoformat(daily[-1]["ts"][:10]) if daily else None
+            try:
+                self._warm[symbol] = self.ux.historical_candles(self._key(symbol), "minutes", 1, day, day) if day else []
+            except (RuntimeError, upstox.UpstoxError) as err:
+                log.warning("warm-up candles for %s failed: %s", symbol, err)
+                self._warm[symbol] = []
+        return self._warm[symbol]
+
     def _index_1m(self, name):
         slot = (name, self.now().strftime("%H%M")[:3] + str(self.now().minute // 5))  # refreshed each 5 minutes
         if slot not in self._market:
@@ -115,9 +128,11 @@ class Engine:
     def get_facts(self, symbol, quote=None):
         key = self._key(symbol)
         quote = quote or self.ux.quotes([key])[key]
-        packet = facts.packet(symbol, self.ux.intraday_candles(key, 1), self._daily_candles(symbol), quote,
+        daily = self._daily_candles(symbol)
+        packet = facts.packet(symbol, self.ux.intraday_candles(key, 1), daily, quote,
                               nifty_1m=self._index_1m("Nifty 50"),
-                              sector_1m=self._index_1m(universe.sector_index(self._sector(symbol))))
+                              sector_1m=self._index_1m(universe.sector_index(self._sector(symbol))),
+                              warm_1m=self._warm_1m(symbol, daily))
         packet["filings"] = self.filings(symbol)  # NSE filings of the last 2 days (results, orders, board outcomes)
         return packet
 

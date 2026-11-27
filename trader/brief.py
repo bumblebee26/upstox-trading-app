@@ -17,21 +17,28 @@ SHOW = 5
 
 
 def _cr(rupees, sign=True):
-    v = round(rupees / 1e7)
+    return _crore(round(rupees / 1e7), sign)
+
+
+def _crore(v, sign=True):
     return ("-" if v < 0 else "+" if sign and v > 0 else "") + f"₹{abs(v):,} cr"
 
 
 def _flows(ux):
-    parts = []
+    parts, day = [], None
     for who in ("fii", "dii"):
         try:
-            rows = (ux.flows(who, "NSE_EQ|CASH") or {}).get("NSE_EQ|CASH") or []
+            f = upstox.latest_flow(ux.flows(who, "NSE_EQ|CASH"))
         except (RuntimeError, upstox.UpstoxError) as err:
             log.warning("%s flows unavailable: %s", who, err)
-            rows = []
-        if rows:
-            parts.append(f"{who.upper()} {_cr(rows[-1]['buy_amount'] - rows[-1]['sell_amount'])}")
-    return " · ".join(parts)
+            f = None
+        if f:
+            parts.append(f"{who.upper()} {_crore(f['net_cr'])}")
+            day = f["day"]
+    if not parts:
+        return ""
+    d = datetime.fromisoformat(day)
+    return " · ".join(parts) + f" ({d.day} {d:%b})"
 
 
 def _deals(store, today):

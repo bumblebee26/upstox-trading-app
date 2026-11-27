@@ -10,9 +10,9 @@ A fresh rebuild, written from the spec. The old repos (`paper-trader`, `stocks_l
 1. The old system keeps trading, frozen (no new features), until switch-over.
 2. The old tests that pin money rules (risk gate, sizing, costs, loss limits, reconciliation) are rewritten
    as this repo's acceptance tests before the code they cover.
-3. Parallel run for 3 sessions (Tue 8, Wed 9, Thu 10 Dec): the new system trades on the second Telegram bot
-   with its own test ledger; each evening a report compares proposals, fills, P&L and reconciliation.
-4. Switch-over on the weekend of 12–13 Dec. Then the old repos are archived and their resources removed.
+3. Parallel run for 3 sessions after the fresh start (section 6): the new system trades on the second Telegram
+   bot with its own ledger; each evening a report compares proposals, fills, P&L and reconciliation.
+4. Switch-over on the weekend after the parallel run. Then the old repos are archived and their resources removed.
 
 ## 2. Isolation from the old repos (owner's rule)
 
@@ -32,9 +32,9 @@ Removing everything the old repos created must not touch anything this repo uses
 Rules:
 - Nothing in this repo reads a `stocks-` bucket or a `/stocks/` parameter at run time. A CI check fails on any
   `stocks-` or `/stocks/` reference outside `docs/` and the one-time copy job.
-- Data from the old system comes across once, by copy (never by reference):
-  the S3 landing archive, the Databricks landing and news volumes, and the old trader journals and shadow results
-  ("the learning"). The copy finishes and is checked (file counts and bytes) before anything old is removed.
+- Data from the old system comes across once, by copy (never by reference): the history files of the old
+  Databricks landing volume (section 3, "History kept"). The copy finishes and is checked (file counts and bytes)
+  before anything old is removed.
 - Before removing the old stacks: run `terraform plan -destroy` on each and confirm that no `upx-` resource appears.
 - The two parameters the owner already created (`/stocks/upstox-analytics-token`, `/stocks/telegram-bot-token-v2`)
   were made by hand, so old Terraform cannot delete them. They are copied to `/upx/upstox-analytics-token` and
@@ -63,8 +63,10 @@ FRED, Yahoo (world tiles only), IBJA, CarDekho, RBI, SEBI, Business Standard.
   minute, swing and long-term at each close. Long-term also has a −25% floor if the AI's stop is not tighter.
 - Every decision is saved with its facts packet so it can be replayed.
 
-**Learning kept.** Track record, shadow results, families and luck lines, selector history, council scorecard and
-model training data come across from the old system, tagged `source = yahoo_era`.
+**History kept (owner, 27 Nov): files, never tables.** The old landing volume's NSE (bhavcopy, delivery,
+indices, F&O list), fundamentals, index members, US (Massive) and FRED files are copied once to
+`/Volumes/upx/bronze/history/` and loaded by the new pipelines, so backtests can use years of data. The old trader
+journals, pools and Yahoo data are not copied.
 
 **Shadows (paper, rule-based, no Claude calls).** About 60 intraday, 25 swing and 18 long-term strategies, listed in
 `docs/STRATEGIES.md` before any are built; regime overlays (VIX band, breadth, Nifty vs 200-day average);
@@ -79,7 +81,8 @@ and description say paper trading). Short brief and proposals; detail behind ℹ
 
 **Databricks dashboard** mirrors the app: every dataset the app shows comes from one view that both read; pages
 Desk, Intraday, Swing, Long-term, Markets, Feed, Your calls; a CI check fails if the app reads a dataset the
-dashboard lacks. One triggered pipeline, run 4 times a day; `ai_summarize` once a day.
+dashboard lacks. Three PySpark pipelines, each run only at its own time and only when its files are new:
+`upx-trading` (13:05, 16:55), `upx-shadows` (17:30), `upx-market` (20:05); `ai_summarize` once a day.
 
 ## 4. Limits
 
@@ -112,3 +115,39 @@ dashboard lacks. One triggered pipeline, run 4 times a day; `ai_summarize` once 
 
 Each pull request: plan, the owner says "go", tests first, code review, the owner says "merge".
 UI changes come with light and dark screenshots.
+
+## 6. Status and order of work (owner, 27 Nov 2026)
+
+The first live day (27 Nov) showed problems, so **trading is off until go-live**: every scheduled job and the
+five job workflows are paused (`local.paused` in `infra/aws/kicker.tf`); only the Telegram responder runs.
+Everything is built and tested first; then the system starts fresh.
+
+**Stage 1: fixes (from 27 Nov)**
+| # | Fix |
+|---|---|
+| F1 | Indicator warm-up: the previous day's 1-minute candles, so the 5m and 15m indicators are ready at 09:15 (on 27 Nov the AI had none until about 10:15) |
+| F2 | FII/DII flows: Upstox sends ₹ crore, newest first; the brief and the AI's `start_day` read them wrongly (₹0 cr, and the oldest day) |
+| F3 | History: the copy workflow follows a running job; the inventory is read; history tables in `upx-market` |
+| F4 | Review of the 27 Nov sessions: anything else in the facts, tools or playbook that held the AI back |
+
+**Stage 2: finish building**
+| # | Build |
+|---|---|
+| B1 | App and dashboard (PR 11): Feed tab, per-trade chart, matching Databricks dashboard; light and dark screenshots |
+| B2 | Minute-history backfill (2022–26) and backtests of every intraday rule (train 2022–24, check 2025–26) |
+| B3 | Go-live tooling: a fresh-start script (new ledgers, test state archived) and the parallel-run report |
+
+**Stage 3: test everything (nothing may break)**
+| # | Test | Proves |
+|---|---|---|
+| T1 | Unit tests and CI on every pull request | each piece works |
+| T2 | Rehearsal day: a real past day replayed minute by minute through the intraday engine (stops, square-off, guardian) into a test folder, Telegram captured to a log | the day runs end to end, no Claude usage |
+| T3 | One real AI rehearsal on the replayed day | the AI gets usable facts from 09:15 and can propose |
+| T4 | Dry run of every job (pools, shadows, NSE, brief, lakehouse, guardian, responder) on real data into the test folder | every job works with the live APIs |
+| T5 | The three lakehouse pipelines on the test data | tables load |
+| T6 | `terraform plan` shows no changes; Checkov and the isolation check pass | AWS and Databricks match the code |
+
+**Stage 4: fresh start (proposed Mon 7 Dec, owner to confirm)**
+1. The fresh-start script resets every pool and shadow ledger; NSE and history data are kept.
+2. `local.paused = false`, apply, and turn the five workflows back on.
+3. Parallel run with the old system for 3 sessions, then the switch-over.

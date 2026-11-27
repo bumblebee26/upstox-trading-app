@@ -43,9 +43,7 @@ def start_day() -> dict:
         flows = {}
         for who in ("fii", "dii"):
             try:
-                rows = (upstox.flows(who, "NSE_EQ|CASH") or {}).get("NSE_EQ|CASH") or []
-                if rows:
-                    flows[who] = {"buy_cr": round(rows[-1]["buy_amount"] / 1e7), "sell_cr": round(rows[-1]["sell_amount"] / 1e7)}
+                flows[who] = upstox.latest_flow(upstox.flows(who, "NSE_EQ|CASH"))  # {day, buy_cr, sell_cr, net_cr}
             except Exception as err:  # noqa: BLE001 - flows are context only
                 flows[who] = f"unavailable: {err}"
         return {"account": view, "flows_previous_day": flows}
