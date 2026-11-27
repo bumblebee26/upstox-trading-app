@@ -21,7 +21,8 @@ def _history_eq():
     """The copied history: bhavcopy stock rows (UDiFF) with that day's delivery, one row per day, stock and series."""
     num = lambda c: F.col(c).cast("double")  # noqa: E731
     bhav = (spark.read.table("bronze.hist_bhavcopy_raw")  # noqa: F821
-            .where(F.col("FinInstrmTp") == "STK")
+            # files from before NSE's July 2024 format leave the instrument type empty: every row is a stock row
+            .where(F.coalesce(F.col("FinInstrmTp"), F.lit("STK")) == "STK")
             .select(F.to_date("TradDt").alias("day"), F.col("TckrSymb").alias("symbol"), F.col("SctySrs").alias("series"),
                     num("OpnPric").alias("open"), num("HghPric").alias("high"), num("LwPric").alias("low"),
                     num("ClsPric").alias("close"), num("PrvsClsgPric").alias("prev_close"),
