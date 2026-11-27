@@ -163,6 +163,38 @@ class EngineTest(unittest.TestCase):
         self.assertAlmostEqual(ex["net_rs"], round((494.75 - 500.25) * ex["qty"] - 10.0, 2))
         self.assertTrue(self.e.report()["reconciled"])
 
+    def test_each_trade_records_who_took_how_long(self):
+        self.clock.t = datetime(2026, 12, 14, 10, 0)
+        self.e.get_facts("ABC")                          # the AI looks
+        self.clock.t = datetime(2026, 12, 14, 10, 2)
+        r = self.review()                                # ...decides after 2 minutes; the council answers in 2 s
+        self.clock.t = datetime(2026, 12, 14, 10, 3)
+        self.e.place_trade(r["review_id"], why="-")      # ...places a minute later (auto mode: no wait for you)
+        self.clock.t = datetime(2026, 12, 14, 10, 40)
+        self.e.exit_position("ABC", why="target reached")
+        t = self.events("exit")[-1]["timeline"]
+        self.assertEqual((t["ai_decide_s"], t["council_s"], t["approval"], t["approval_s"], t["placing_s"]),
+                         (120, 2.0, "auto", 0, 60))
+        self.assertEqual((t["hold_min"], t["total_min"]), (37, 40))
+        self.assertIn("facts_s", t)
+        self.assertEqual(self.events("fill")[-1]["timeline"]["placing_s"], 60)
+
+    def test_a_pass_records_how_long_the_ai_spent_on_the_stock(self):
+        self.clock.t = datetime(2026, 12, 14, 10, 0)
+        self.e.get_facts("ABC")
+        self.clock.t = datetime(2026, 12, 14, 10, 4)
+        self.e.note_pass("ABC", "extended from the open")
+        self.assertEqual(self.events("pass")[-1]["ai_spent_s"], 240)
+
+    def test_a_pass_is_recorded_with_its_reason(self):
+        out = self.e.note_pass("mazdock", "daily trend still down " + "x" * 400)
+        self.assertEqual(out, {"status": "noted"})
+        p = [e for e in journal.read(DAY, base_dir=self.dir) if e["event"] == "pass"][-1]
+        self.assertEqual((p["symbol"], p["pool"]), ("MAZDOCK", "intraday"))
+        self.assertLessEqual(len(p["reason"]), 300)
+        self.assertIn("at", p)
+        self.assertEqual(self.e.note_pass("ABC", " ")["status"], "refused")  # a pass needs a reason
+
     def test_heartbeat_every_few_minutes_while_guarding(self):
         self.e.monitor_once()
         self.assertEqual(engine.heartbeat_age_min(self.store, self.clock()), 0)

@@ -114,6 +114,13 @@ def skip_trade(review_id: str, why: str) -> dict:
 
 
 @mcp.tool()
+def note_pass(symbol: str, reason: str) -> dict:
+    """Record a stock you studied (facts read) and chose not to propose, with the reason in a short line. Call it
+    for every such stock: the owner reviews passes, and the time you spent on it is logged."""
+    return _safe(_e().note_pass, symbol.upper(), reason)
+
+
+@mcp.tool()
 def adjust_stop(symbol: str, new_stop: float, why: str) -> dict:
     """Tighten or trail an open position's stop. Widening is refused by code."""
     return _safe(_e().adjust_stop, symbol.upper(), new_stop, why)

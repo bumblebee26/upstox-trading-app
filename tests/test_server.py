@@ -8,7 +8,8 @@ except ModuleNotFoundError:  # the mcp package is only needed by the session
     server = None
 
 TOOLS = {"start_day", "wait_for_open", "screen", "get_facts", "company_news", "account_status", "review_trade",
-         "place_trade", "skip_trade", "adjust_stop", "exit_position", "wait_for_next_candle", "end_of_day_report"}
+         "place_trade", "skip_trade", "note_pass", "adjust_stop", "exit_position", "wait_for_next_candle",
+         "end_of_day_report"}
 
 
 @unittest.skipIf(server is None, "mcp not installed")
