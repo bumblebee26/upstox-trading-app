@@ -115,6 +115,7 @@ resource "aws_scheduler_schedule" "ops" {
   #checkov:skip=CKV_AWS_297:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; AWS encrypts schedules
   for_each                     = local.ops
   name                         = "upx-${each.key}"
+  state                        = local.paused && each.key == "guardian" ? "DISABLED" : "ENABLED" # the responder keeps answering Telegram
   schedule_expression          = each.value[0]
   schedule_expression_timezone = "Asia/Kolkata"
 
