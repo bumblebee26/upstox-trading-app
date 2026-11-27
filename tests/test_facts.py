@@ -63,6 +63,18 @@ class PacketTest(unittest.TestCase):
     def test_is_small_enough_to_send(self):
         self.assertLess(len(json.dumps(self.p)), 4000)
 
+    def test_indicators_are_ready_at_the_open_with_yesterdays_minutes(self):
+        early = minute_candles(10)                                       # 09:15-09:24 only
+        cold = facts.packet("ABC", early, daily_candles(300), QUOTE)
+        self.assertIsNone(cold["tf"]["5m"]["ema20"])                     # the bug of 27 Nov: blind until ~10:55
+        yesterday = minute_candles(375, start=480.0, day="2026-12-13")
+        warm = facts.packet("ABC", early, daily_candles(300), QUOTE, warm_1m=yesterday)
+        for tf in ("5m", "15m"):
+            self.assertIsNotNone(warm["tf"][tf]["ema20"], tf)
+            self.assertIsNotNone(warm["tf"][tf]["rsi14"], tf)
+        self.assertEqual(warm["tf"]["5m"]["candles"], cold["tf"]["5m"]["candles"])  # patterns read today only
+        self.assertEqual(warm["tf"]["5m"]["chart"], cold["tf"]["5m"]["chart"])
+
     def test_before_the_open_uses_the_quote(self):
         p = facts.packet("ABC", [], daily_candles(300), QUOTE)
         self.assertEqual(p["price"], 515.0)

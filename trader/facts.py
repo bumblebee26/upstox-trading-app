@@ -17,23 +17,27 @@ def _since_open(c1m):
     return _pct(c1m[-1]["close"], c1m[0]["open"]) if c1m else None
 
 
-def _frame(cs, daily=False):
-    closes = [c["close"] for c in cs]
+def _frame(cs, daily=False, warm=()):
+    """Indicators over the warm-up bars plus cs (so they are ready from the first bar); patterns over cs only."""
+    allc = list(warm) + list(cs)
+    closes = [c["close"] for c in allc]
     out = {"close": closes[-1] if closes else None, "ema9": ind.last_ema(closes, 9),
            "ema20": ind.last_ema(closes, 20), "ema50": ind.last_ema(closes, 50), "rsi14": ind.rsi(closes, 14),
-           "atr": ind.atr(cs), "adx": ind.adx(cs), "macd": ind.macd(closes), "bollinger": ind.bollinger(closes),
-           "supertrend": ind.supertrend(cs), "candles": pat.candles(cs[-6:]), "chart": pat.chart(cs[-40:])}
+           "atr": ind.atr(allc), "adx": ind.adx(allc), "macd": ind.macd(closes), "bollinger": ind.bollinger(closes),
+           "supertrend": ind.supertrend(allc), "candles": pat.candles(cs[-6:]), "chart": pat.chart(cs[-40:])}
     if daily:
         out.update(ema200=ind.last_ema(closes, 200), rsi2=ind.rsi(closes, 2))
     return out
 
 
-def packet(symbol, one_min, daily, quote, nifty_1m=None, sector_1m=None, same_time_volumes=None):
+def packet(symbol, one_min, daily, quote, nifty_1m=None, sector_1m=None, same_time_volumes=None, warm_1m=None):
+    """warm_1m: the previous trading day's 1-minute candles, so the 5m and 15m indicators are ready at 09:15."""
     today = one_min[-1]["ts"][:10] if one_min else None
     past = [d for d in daily if today is None or d["ts"][:10] < today]
     prev = past[-1] if past else None
     price = one_min[-1]["close"] if one_min else quote.get("last_price")
     five, fifteen = ind.resample(one_min, 5), ind.resample(one_min, 15)
+    warm5, warm15 = ind.resample(warm_1m or [], 5), ind.resample(warm_1m or [], 15)
 
     buy = (quote.get("depth") or {}).get("buy") or [{}]
     sell = (quote.get("depth") or {}).get("sell") or [{}]
@@ -58,7 +62,8 @@ def packet(symbol, one_min, daily, quote, nifty_1m=None, sector_1m=None, same_ti
             "value_area": ind.value_area(one_min),
             "rvol": ind.relative_volume(sum(c["volume"] for c in one_min), same_time_volumes or []),
         },
-        "tf": {"5m": _frame(five), "15m": _frame(fifteen), "daily": _frame(past, daily=True)},
+        "tf": {"5m": _frame(five, warm=warm5), "15m": _frame(fifteen, warm=warm15),
+               "daily": _frame(past, daily=True)},
         "levels": {
             "prev_day": {k: prev[k] for k in ("high", "low", "close")} if prev else None,
             "pivots": ind.pivots(prev["high"], prev["low"], prev["close"]) if prev else None,

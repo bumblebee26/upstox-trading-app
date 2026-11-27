@@ -42,6 +42,10 @@ class FakeUx:
         return self.last_1m.get(key) or [candle("09:15", 495, 501, 494, 500), candle("09:59", 499, 501, 498, 500)]
 
     def historical_candles(self, key, unit, interval, start, end):
+        self.__dict__.setdefault("hist_calls", []).append((key, unit, start, end))
+        if unit == "minutes":  # a full previous session, 09:15-15:29
+            return [{"ts": f"{start.isoformat()}T{9 + (15 + i) // 60:02d}:{(15 + i) % 60:02d}:00+05:30", "open": 495,
+                     "high": 496, "low": 494, "close": 495 + (i % 3) * 0.1, "volume": 5000} for i in range(375)]
         return [{"ts": f"2026-11-{d:02d}T00:00:00+05:30", "open": 490, "high": 500, "low": 480, "close": 495,
                  "volume": 2 * 10 ** 6} for d in range(1, 29)]
 
@@ -118,6 +122,10 @@ class EngineTest(unittest.TestCase):
         self.assertTrue(r["allowed"])
         self.assertNotIn("broke the 15-minute high", str(council_fn.cases[0].get("facts")))
         self.assertEqual(council_fn.cases[0]["facts"]["filings"][0]["what"], "Press Release")  # NSE filings, 2 days
+        minutes = [c for c in self.ux.hist_calls if c[1] == "minutes"]       # yesterday's 1m: indicators warm at 09:15
+        self.assertEqual(minutes[0][2], minutes[0][3])
+        self.assertEqual(minutes[0][2].isoformat(), "2026-11-28")             # the last daily candle's day
+        self.assertIsNotNone(council_fn.cases[0]["facts"]["tf"]["5m"]["ema20"])
         placed = self.e.place_trade(r["review_id"], why="council and tape agree")
         self.assertEqual(placed["status"], "placed")
         pos = self.e.state["positions"]["ABC"]
