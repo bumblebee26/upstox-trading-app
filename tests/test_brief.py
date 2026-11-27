@@ -17,8 +17,11 @@ class FakeUx:
                 "NSE_INDEX|India VIX": {"last_price": 13.25, "net_change": 0.4}}
 
     def flows(self, who, data_type, interval="1D", start=None):
-        amounts = {"fii": (9_000_000_000, 21_340_000_000), "dii": (25_000_000_000, 2_650_000_000)}[who]
-        return {"NSE_EQ|CASH": [{"buy_amount": amounts[0], "sell_amount": amounts[1]}]}
+        # Upstox's real shape: newest first, amounts in ₹ crore, the day as a timestamp (26 Nov, then 25 Nov)
+        newest = {"fii": (900.0, 2134.0), "dii": (2500.0, 265.0)}[who]
+        return {"NSE_EQ|CASH": [
+            {"time_stamp": 1795631400000, "buy_amount": newest[0], "sell_amount": newest[1]},
+            {"time_stamp": 1795545000000, "buy_amount": 1.0, "sell_amount": 99999.0}]}
 
     def holidays(self):
         return []
@@ -40,7 +43,7 @@ class BriefTest(unittest.TestCase):
         text = sent[0]
         self.assertEqual(out["results_today"], 6)
         self.assertTrue(text.startswith("🌅 Fri 27 Nov"))
-        self.assertIn("FII -₹1,234 cr · DII +₹2,235 cr", text)
+        self.assertIn("FII -₹1,234 cr · DII +₹2,235 cr (26 Nov)", text)
         self.assertIn("Nifty 24,500 (-0.30%) · India VIX 13.25", text)
         self.assertIn("Results today (6): TCS, INFY, A, B, C +1 more", text)
         self.assertIn("ABC: BIG FUND LLP bought ₹45 cr", text)

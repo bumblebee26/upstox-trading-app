@@ -11,7 +11,7 @@ import tempfile
 import time
 import urllib.parse
 from collections import deque
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from core import http, ssm
@@ -177,6 +177,19 @@ def flows(who, data_type, interval="1D", start=None):
         raise ValueError("who must be fii or dii")
     params = {"data_type": data_type, "interval": interval, **({"from": start.isoformat()} if start else {})}
     return _get(who, f"/v2/market/{who}", params)
+
+
+def latest_flow(reply):
+    """The newest day in a flows() reply: {day, buy_cr, sell_cr, net_cr}. Upstox sends the amounts already in
+    ₹ crore, newest first (seen 27 Nov 2026); the newest is picked by date anyway. None if there are no rows."""
+    rows = next(iter((reply or {}).values()), None) or []
+    if not rows:
+        return None
+    r = max(rows, key=lambda x: x.get("time_stamp") or 0)
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return {"day": datetime.fromtimestamp(r["time_stamp"] / 1000, ist).date().isoformat(),
+            "buy_cr": round(r["buy_amount"]), "sell_cr": round(r["sell_amount"]),
+            "net_cr": round(r["buy_amount"] - r["sell_amount"])}
 
 
 def charges(key, quantity, product, side, price):

@@ -169,5 +169,17 @@ class OtherCallsTest(Calls):
             upstox.flows("retail", "NSE_EQ|CASH")
 
 
+class FlowsTest(unittest.TestCase):
+    def test_latest_day_in_crore(self):
+        reply = {"NSE_EQ|CASH": [  # as Upstox sends it (27 Nov 2026): newest first, amounts already in ₹ crore
+            {"time_stamp": 1795631400000, "buy_amount": 17879.74, "sell_amount": 12036.41},
+            {"time_stamp": 1791916200000, "buy_amount": 16381.85, "sell_amount": 18239.29}]}
+        self.assertEqual(upstox.latest_flow(reply), {"day": "2026-11-26", "buy_cr": 17880, "sell_cr": 12036,
+                                                     "net_cr": 5843})
+        self.assertEqual(upstox.latest_flow({"NSE_EQ|CASH": list(reversed(reply["NSE_EQ|CASH"]))})["day"],
+                         "2026-11-26")  # order doesn't matter
+        self.assertIsNone(upstox.latest_flow({}))
+
+
 if __name__ == "__main__":
     unittest.main()

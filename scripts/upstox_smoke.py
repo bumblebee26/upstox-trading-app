@@ -14,12 +14,6 @@ from core import upstox  # noqa: E402
 from trader import facts  # noqa: E402
 
 
-def _ends(reply):
-    """How many rows came back, and the first and last (to see their order and fields)."""
-    rows = next(iter(reply.values()), []) if isinstance(reply, dict) else reply
-    return f"{len(rows)} rows; first {rows[0] if rows else None}; last {rows[-1] if rows else None}"
-
-
 def _packet(key, nifty, today):
     daily = upstox.historical_candles(key, "days", 1, today - timedelta(days=400), today - timedelta(days=1))
     quote = upstox.quotes([key])[key]
@@ -45,8 +39,8 @@ def main():
         "historical days": lambda: len(upstox.historical_candles(nifty, "days", 1, today - timedelta(days=30), today)),
         "holidays": lambda: f"{len(upstox.holidays())} this year",
         "market_status": lambda: upstox.market_status()["status"],
-        "fii": lambda: _ends(upstox.flows("fii", "NSE_EQ|CASH")),
-        "dii": lambda: len(upstox.flows("dii", "NSE_EQ|CASH")),
+        "fii": lambda: upstox.latest_flow(upstox.flows("fii", "NSE_EQ|CASH")),
+        "dii": lambda: upstox.latest_flow(upstox.flows("dii", "NSE_EQ|CASH")),
         "charges": lambda: upstox.charges(key, 10, "I", "BUY", 1000),
         "charges delivery sell": lambda: upstox.charges(key, 10, "D", "SELL", 1000),
         "news": lambda: f"{len(upstox.news([key]).get(key, []))} items",
