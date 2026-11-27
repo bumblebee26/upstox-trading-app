@@ -64,7 +64,7 @@ jobs:
           JSON
           tools=""
           for t in start_day wait_for_open screen get_facts company_news account_status review_trade place_trade \
-                   skip_trade adjust_stop exit_position wait_for_next_candle end_of_day_report; do
+                   skip_trade note_pass adjust_stop exit_position wait_for_next_candle end_of_day_report; do
             tools="${tools:+$tools,}mcp__trader__$t"
           done
           claude -p "$(cat prompts/session.md)
@@ -75,7 +75,11 @@ jobs:
             --strict-mcp-config \
             --allowedTools "$tools" \
             --permission-mode dontAsk \
-            --output-format text
+            --output-format stream-json --verbose > "$RUNNER_TEMP/transcript.jsonl"
+
+      - name: Save the session record (every step the AI took) and print its summary
+        if: always() && steps.claim.outcome == 'success'
+        run: python scripts/save_transcript.py "$RUNNER_TEMP/transcript.jsonl" "$PHASE"
 
       - name: Tell Telegram if the session failed
         if: failure() && steps.claim.outcome == 'success'

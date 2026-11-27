@@ -37,6 +37,7 @@ class Engine:
         self._daily, self._market, self._answers = {}, {}, {}
         self._beat = None
         self._warm = {}
+        self._looked = {}  # symbol -> when the AI first looked today, when its last facts were ready, how long they took
 
     # ---- state ---------------------------------------------------------------------------------------------
     def _day(self):
@@ -126,6 +127,7 @@ class Engine:
         return self._market[slot]
 
     def get_facts(self, symbol, quote=None):
+        t0 = self.now()
         key = self._key(symbol)
         quote = quote or self.ux.quotes([key])[key]
         daily = self._daily_candles(symbol)
@@ -134,6 +136,9 @@ class Engine:
                               sector_1m=self._index_1m(universe.sector_index(self._sector(symbol))),
                               warm_1m=self._warm_1m(symbol, daily))
         packet["filings"] = self.filings(symbol)  # NSE filings of the last 2 days (results, orders, board outcomes)
+        t1 = self.now()
+        seen = self._looked.setdefault(symbol, {"start": t0})
+        seen.update(end=t1, facts_s=round((t1 - t0).total_seconds(), 1))
         return packet
 
     def screen(self, top=20):
@@ -188,6 +193,8 @@ class Engine:
 
     def review_trade(self, symbol, side, setup, entry, stop, target, pros, cons, agent_yes_pct, invalid_if):
         key, side = self._key(symbol), side.upper()
+        started = self.now()
+        seen = dict(self._looked.get(symbol) or {})  # the AI's own look, before the facts are fetched again here
         sector = self._sector(symbol)
         quote = self.ux.quotes([key])[key]
         packet = self.get_facts(symbol, quote=quote)
@@ -200,12 +207,19 @@ class Engine:
             return {"allowed": False, "reason": g.reason}
         case = {"symbol": symbol, "side": side, "setup": setup, "entry": entry, "stop": stop, "target": target,
                 "gate": {"qty": g.qty, "risk_rs": g.risk_rs, "rr": g.rr}, "facts": packet}
+        c0 = self.now()
         verdict = self.council_fn(case, self.track)  # members see facts and numbers only, not the AI's reasons
+        council_s = verdict.get("seconds") if isinstance(verdict, dict) else None
+        timeline = {"first_look": (seen.get("start") or started).isoformat(timespec="seconds"),
+                    "facts_s": seen.get("facts_s"),
+                    "ai_decide_s": _secs(seen["end"], started) if seen.get("end") else None,
+                    "council_s": council_s if council_s is not None else _secs(c0, self.now()),
+                    "reviewed_at": self.now().isoformat(timespec="seconds")}
         rid = f"{symbol}-{self.now():%H%M%S}"
         self.state["reviews"][rid] = dict(case, key=key, sector=sector, qty=g.qty, risk_rs=g.risk_rs, rr=g.rr,
                                           at=now.isoformat(timespec="seconds"),
                                           pros=pros, cons=cons, agent_yes_pct=agent_yes_pct, invalid_if=invalid_if,
-                                          council=verdict)
+                                          council=verdict, timeline=timeline)
         self._journal("review", review_id=rid, **{k: v for k, v in self.state["reviews"][rid].items()})
         self._save()
         return {"allowed": True, "review_id": rid, "qty": g.qty, "risk_rs": g.risk_rs, "rr": g.rr, "council": verdict}
@@ -230,14 +244,20 @@ class Engine:
         args = dict(side=r["side"], symbol=r["symbol"], setup=r["setup"], qty=r["qty"], entry=r["entry"],
                     target=r["target"], stop=r["stop"], risk_rs=r["risk_rs"], rr=r["rr"], pros=r["pros"],
                     cons=r["cons"], council=r["council"])
+        timeline = dict(r.get("timeline") or {})
+        placed_at = self.now()
+        if timeline.get("reviewed_at"):
+            timeline["placing_s"] = _secs(datetime.fromisoformat(timeline["reviewed_at"]), placed_at)
+        timeline.update(approval="auto", approval_s=0)
         decision = "placed by the AI"
         if not self.state["auto"]:
             mid = self.tg.send(messages.proposal(decision="waiting for your YES (3 min)", **args),
                                buttons=[[("✅ YES", f"yes:{review_id}"), ("❌ NO", f"no:{review_id}")]])
             answer = self._await_owner(review_id, approval_wait_sec)
+            timeline.update(approval=answer or "expired", approval_s=_secs(placed_at, self.now()))
             if answer != "yes":
                 self.tg.edit(mid, messages.proposal(decision="not placed (no YES)", **args))
-                self._journal("not_approved", review_id=review_id, answer=answer)
+                self._journal("not_approved", review_id=review_id, answer=answer, timeline=timeline)
                 return {"status": "not approved"}
             decision = "placed (you said YES)"
         quote = self.ux.quotes([r["key"]])[r["key"]]
@@ -265,15 +285,27 @@ class Engine:
         mid = self.tg.send(messages.proposal(decision=decision, **dict(args, entry=fill)),
                            buttons=[[("👍", f"rate:{review_id}:up"), ("👎", f"rate:{review_id}:down")],
                                     [("EXIT", f"exit:{r['symbol']}"), ("ℹ️ Full reasons", f"info:{review_id}")]])
+        timeline.update(filled_at=self.now().isoformat(timespec="seconds"),
+                        fill_s=_secs(placed_at, self.now()) - (timeline["approval_s"] or 0))
         self.state["positions"][r["symbol"]].update(setup=r["setup"], review_id=review_id, msg_id=mid,
-                                                    key=r["key"], invalid_if=r["invalid_if"])
+                                                    key=r["key"], invalid_if=r["invalid_if"], timeline=timeline)
         self.state["msg_index"][str(mid)] = review_id
         self._journal("fill", review_id=review_id, symbol=r["symbol"], side=r["side"], qty=r["qty"], price=fill,
                       at=self.now().isoformat(timespec="seconds"),
                       charges_rs=charges, why=why, facts=r["facts"], council=r["council"], pros=r["pros"],
-                      cons=r["cons"], agent_yes_pct=r["agent_yes_pct"])
+                      cons=r["cons"], agent_yes_pct=r["agent_yes_pct"], timeline=timeline)
         self._save()
         return {"status": "placed", "fill": fill, "qty": r["qty"], "charges_rs": charges}
+
+    def note_pass(self, symbol, reason):
+        """The AI studied a stock and chose not to propose it: one journal line with its reason and time spent."""
+        symbol, reason = symbol.upper(), (reason or "").strip()
+        if not reason:
+            return {"status": "refused", "reason": "say why you passed"}
+        seen = self._looked.get(symbol) or {}
+        self._journal("pass", symbol=symbol, reason=reason[:300], at=self.now().isoformat(timespec="seconds"),
+                      ai_spent_s=_secs(seen["start"], self.now()) if seen.get("start") else None)
+        return {"status": "noted"}
 
     def skip_trade(self, review_id, why):
         r = self.state["reviews"].pop(review_id, None)
@@ -310,8 +342,15 @@ class Engine:
         self.state["peak_balance"] = max(self.state.get("peak_balance", self.state["balance"]), self.state["balance"])
         self.track.append({"setup": p.get("setup"), "won": net > 0, "day": self._day()})
         storage.put_json(TRACK_KEY, self.track, store=self.store)
+        timeline = dict(p.get("timeline") or {})
+        now = self.now()
+        if timeline.get("filled_at"):
+            timeline["hold_min"] = round(_secs(datetime.fromisoformat(timeline["filled_at"]), now) / 60, 1)
+        if timeline.get("first_look"):
+            timeline["total_min"] = round(_secs(datetime.fromisoformat(timeline["first_look"]), now) / 60, 1)
         self._journal("exit", symbol=symbol, qty=p["qty"], price=fill, net_rs=net, reason=reason, why=why,
-                      charges_rs=charges, charges_pending=charges is None, review_id=p.get("review_id"))
+                      charges_rs=charges, charges_pending=charges is None, review_id=p.get("review_id"),
+                      timeline=timeline)
         self.tg.send(messages.exit_note(symbol, p["qty"], fill, net, why or reason), reply_to=p.get("msg_id"))
         self._save()
         return {"ok": True, "net_rs": net, "fill": fill}
@@ -431,6 +470,10 @@ class Engine:
         self._journal("report", trades=len(exits), net_rs=self.state["realized_today"], reconciled=ok)
         self._save()
         return {"trades": len(exits), "net_rs": self.state["realized_today"], "reconciled": ok}
+
+
+def _secs(a, b):
+    return round((b - a).total_seconds(), 1)
 
 
 def heartbeat_age_min(store, now):

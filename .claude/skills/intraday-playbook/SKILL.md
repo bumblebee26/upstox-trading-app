@@ -19,6 +19,7 @@ fine; a forced trade is not. Protect the day first: one good trade beats five av
 1. `screen` once. Pick at most 3 names worth a look; call `get_facts` on them (more only for a clear reason).
 2. A trade needs **three things lined up**: a setup on the 5-minute chart, the 15-minute and daily context not
    against it, and the market (Nifty, sector) not against it. Two of three is a pass, not a trade.
+   For every name you read and don't take to `review_trade`, call `note_pass` with the reason in one line.
 3. `review_trade` with your honest pros, cons, YES % and the condition that would prove you wrong (`invalid_if`).
 4. Read the council. Weigh the skeptic's concrete objection most; a base rate from few trades is weak evidence.
    Then `place_trade` or `skip_trade` with one line why.
