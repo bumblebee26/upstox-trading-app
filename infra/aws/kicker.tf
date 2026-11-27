@@ -134,10 +134,16 @@ locals {
   }
 }
 
+# Owner's pause (27 Nov): every job is stopped until the fixes are in. Set to false to start again.
+locals {
+  paused = true
+}
+
 resource "aws_scheduler_schedule" "kick" {
   #checkov:skip=CKV_AWS_297:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; AWS encrypts schedules
   for_each                     = local.kicks
   name                         = each.key
+  state                        = local.paused ? "DISABLED" : "ENABLED"
   schedule_expression          = each.value[0]
   schedule_expression_timezone = "Asia/Kolkata"
 
