@@ -1,10 +1,9 @@
 """One-time copy of the old system's market history into this repo's own volume (dummy-money paper trader).
 
-Files only, never tables: the old landing volume's NSE, US and macro history goes to
-/Volumes/upx/bronze/history/<source>/, keeping each file's path, so the old catalog can be deleted later
-without touching anything here. Old news is copied only if it covers more than a week. Each source is
-checked by file count and bytes after the copy, and a short inventory (dates, file types, a sample) is
-printed so the loading tables can be written to match the real files.
+Files only, never tables: the old landing volume's NSE (bhavcopy, delivery, indices) and US (Massive) history
+goes to /Volumes/upx/bronze/history/<source>/, keeping each file's path, so the old catalog can be deleted later
+without touching anything here. Each source is checked by file count and bytes after the copy, and a short
+inventory (dates, file types, a sample) is printed.
 
 Runs in Databricks as the job upx-history-copy (started by .github/workflows/history.yml). Safe to run again:
 files already copied with the same size are skipped. Delete this file after the copy is checked.
@@ -15,9 +14,14 @@ import sys
 
 OLD_ROOT = "/Volumes/stocks/bronze"  # isolation-ok (the one-time copy)
 NEW_ROOT = "/Volumes/upx/bronze/history"
-SOURCES = ["nse", "nse_delivery", "nse_indices", "nse_fo", "fundamentals", "index_members", "massive", "fred"]
-NEWS_MIN_DAYS = 7
+# Owner, 27 Nov: keep these; fred, index_members, nse_fo, fundamentals (Yahoo) and news are not kept.
+SOURCES = ["nse", "nse_delivery", "nse_indices", "massive"]
 DAY = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
+
+
+def _plain(path):
+    """dbutils.fs.ls names files dbfs:/Volumes/...; compare and slice paths without that prefix."""
+    return path[5:] if path.startswith("dbfs:") else path
 
 
 def walk(fs, path):
@@ -29,9 +33,9 @@ def walk(fs, path):
     out = {}
     for e in entries:
         if e.name.endswith("/"):
-            out.update(walk(fs, e.path))
+            out.update(walk(fs, _plain(e.path)))
         else:
-            out[e.path] = e.size
+            out[_plain(e.path)] = e.size
     return out
 
 
@@ -65,16 +69,24 @@ def copy_tree(fs, src, dst):
             "types": types, "sample_file": sample_path[len(src):], "sample": sample}
 
 
-def run(fs, sources=SOURCES, news_min_days=NEWS_MIN_DAYS):
+def run(fs, sources=SOURCES):
     report = {}
     for source in sources:
         r = copy_tree(fs, f"{OLD_ROOT}/landing/{source}", f"{NEW_ROOT}/{source}")
         report[source] = r if r is not None else {"skipped": "not in the old volume"}
-    news_days = {m.group(1) for p in walk(fs, f"{OLD_ROOT}/news") if (m := DAY.search(p))}
-    if len(news_days) > news_min_days:
-        report["news"] = copy_tree(fs, f"{OLD_ROOT}/news", f"{NEW_ROOT}/news")
-    else:
-        report["news"] = {"skipped": f"only {len(news_days)} days of news (the owner asked for more than a week)"}
+    # Once every kept source verified: remove anything else in the history volume (folders misplaced by the
+    # 27 Nov path bug, and the sources the owner dropped). Never while a copy is unverified.
+    report["removed"] = []
+    if all(r.get("verified", True) for r in report.values() if isinstance(r, dict)):
+        try:
+            top = fs.ls(NEW_ROOT)
+        except Exception:  # noqa: BLE001 - nothing there yet
+            top = []
+        for e in top:
+            name = e.name.rstrip("/")
+            if name not in sources:
+                fs.rm(_plain(e.path), recurse=True)
+                report["removed"].append(_plain(e.path))
     return report
 
 
@@ -83,6 +95,6 @@ if __name__ == "__main__":
 
     result = run(dbutils.fs)
     for name, r in result.items():
-        print(json.dumps({"source": name, **r}, ensure_ascii=False))
-    if any(r.get("verified") is False for r in result.values()):
+        print(json.dumps({"source": name, **r} if isinstance(r, dict) else {name: r}, ensure_ascii=False))
+    if any(isinstance(r, dict) and r.get("verified") is False for r in result.values()):
         sys.exit("a copy did not verify (count or bytes differ); run the job again")
