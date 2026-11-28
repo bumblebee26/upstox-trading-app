@@ -102,7 +102,7 @@ resource "aws_lambda_function_url" "app_web" {
 # A public function URL needs both permissions (AWS, Oct 2025); InvokeFunction only for calls through the URL.
 resource "aws_lambda_permission" "app_web_url" {
   #checkov:skip=CKV_AWS_301:owner OK 28 Nov: the app must open on a phone; only the secret path is served, everything else is 404
-  statement_id           = "FunctionURLAllowPublicAccess"
+  statement_id           = "upx-app-web-url"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.app_web.function_name
   principal              = "*"
@@ -111,20 +111,19 @@ resource "aws_lambda_permission" "app_web_url" {
 
 resource "aws_lambda_permission" "app_web_invoke" {
   #checkov:skip=CKV_AWS_301:owner OK 28 Nov: as above, and only for calls that come through the function URL
-  statement_id             = "FunctionURLInvokeAllowPublicAccess"
+  statement_id             = "upx-app-web-invoke"
   action                   = "lambda:InvokeFunction"
   function_name            = aws_lambda_function.app_web.function_name
   principal                = "*"
   invoked_via_function_url = true
 }
 
-# The app's link, for the owner: aws ssm get-parameter --name /upx/app-url --with-decryption
-resource "aws_ssm_parameter" "app_url" {
-  #checkov:skip=CKV_AWS_337:owner OK 28 Nov: a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; SecureString uses the AWS key
-  name        = "/upx/app-url"
-  description = "The phone app's link (address + secret path). Anyone with it can open the app."
-  type        = "SecureString"
-  value       = "${trimsuffix(aws_lambda_function_url.app_web.function_url, "/")}/${local.app_path}/"
+# The app's link (address + secret path). Anyone with it can open the app. To read it, from infra/aws:
+#   terraform output -raw app_url
+# (An output, not an SSM parameter: the apply role may not write parameters.)
+output "app_url" {
+  value     = "${trimsuffix(aws_lambda_function_url.app_web.function_url, "/")}/${local.app_path}/"
+  sensitive = true
 }
 
 output "app_bucket" {

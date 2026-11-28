@@ -5,10 +5,12 @@ the app's pieces live and how its data gets there.
 
 ## Opening the app
 
-The app has a secret address. To get it:
+The app has a secret address. To get it, on the PC:
 
 ```
-aws ssm get-parameter --name /upx/app-url --with-decryption --query Parameter.Value --output text
+cd infra/aws
+terraform init
+terraform output -raw app_url
 ```
 
 Anyone with the link can open the app (it shows paper money only). Only that path is served; any other address
