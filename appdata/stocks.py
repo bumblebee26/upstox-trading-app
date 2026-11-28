@@ -24,8 +24,10 @@ INDEX_FILES = {
     "PSU Bank": "ind_niftypsubanklist.csv", "Realty": "ind_niftyrealtylist.csv", "Energy": "ind_niftyenergylist.csv",
 }
 
-# shortcut: the BSE has no free constituent file, so the 30 Sensex members are listed here (as of the
-# 22 Dec 2025 change). BSE reviews them every June and December: update this list at the next review.
+# shortcut: no free source gives the Sensex members in a form a job can read (Upstox has no index-member
+# API, BSE's data feed refuses GitHub runners, and the ETF holdings pages are scripted), so the 30 members
+# are listed here. Current as of the 22 Dec 2025 change; the June 2026 review changed nothing in the Sensex.
+# BSE reviews them every June and December: check this list at the review after each change.
 SENSEX = ("ADANIPORTS", "ASIANPAINT", "AXISBANK", "BAJFINANCE", "BAJAJFINSV", "BEL", "BHARTIARTL", "ETERNAL", "HCLTECH",
           "HDFCBANK", "HINDUNILVR", "ICICIBANK", "INDIGO", "INFY", "ITC", "KOTAKBANK", "LT", "M&M", "MARUTI", "NTPC",
           "POWERGRID", "RELIANCE", "SBIN", "SUNPHARMA", "TCS", "TATASTEEL", "TECHM", "TITAN", "TRENT", "ULTRACEMCO")
