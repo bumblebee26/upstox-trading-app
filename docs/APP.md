@@ -5,7 +5,8 @@ the app's pieces live and how its data gets there.
 
 ## Opening the app
 
-The app has a secret address. To get it, on the PC:
+The app has a secret address. The owner keeps it in Parameter Store at `/upx/app-url` (added by hand, outside
+Terraform). It can also be read on the PC:
 
 ```
 cd infra/aws
@@ -20,7 +21,7 @@ shows "Not found".
 
 | Piece | Where | What it does |
 |---|---|---|
-| The page | `app/` (from B1b) | Uploaded to the `upx-app` bucket by Terraform on each apply |
+| The page | `app/index.html` (one file: page, styles, script) | Uploaded to the `upx-app` bucket by Terraform on each apply |
 | The server | `lambdas/app_web.py`, `infra/aws/app.tf` | A Lambda function URL serves `/<secret>/<file>` from the bucket |
 | The data | `appdata/export.py` | The last step of the Lakehouse job, after the pipelines |
 | Datasets | `appdata/queries/*.sql` | One file per dataset; the dashboard (B1c) reads the same files |
@@ -45,3 +46,17 @@ Each export writes:
 
 A first day shows no change. A source that fails keeps its last good value and its date. A scraped price more
 than 15% away from the last good one is treated as a misread page and ignored.
+
+## The page
+
+One file, `app/index.html`, with no libraries. Tabs: Stocks (Desk, Intraday, Swing, Long), Markets, TFeed,
+Explore, and Ratings and Performance, in the order of the approved layout. The phone remembers the theme, the
+tab, every ‹ › switch and the chart choices; it also keeps the last data it loaded, so the app opens offline with
+a note saying which copy it shows.
+
+A card whose data does not exist yet stays hidden (no empty boxes). Still waiting for data (B1b-2): Market this
+morning, Today's read, the Intraday plan, per-trade candle charts, Council test detail, the Auto bar ladder,
+Swing/Long holdings, Suggested today, News breakouts, and how many skipped trades would have lost.
+
+A test (`tests/test_app_export.py`) checks that every dataset the page reads has a query file, and that every
+market value it shows is fetched.

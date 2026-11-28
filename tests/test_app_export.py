@@ -38,8 +38,9 @@ class QueriesTest(unittest.TestCase):
     def test_every_query_file_reads_only_upx_tables(self):
         for f in sorted(export.QUERIES.glob("*.sql")):
             code = re.sub(r"--[^\n]*", "", f.read_text())  # comments are prose, not tables
+            ctes = set(re.findall(r"(?i)\b(\w+)\s+AS\s*\(", code))  # WITH name AS (...): the query's own steps
             for table in re.findall(r"(?i)\b(?:from|join)\s+([\w.`]+)", code):
-                self.assertTrue(table.strip("`").startswith("upx."), f"{f.name}: {table}")
+                self.assertTrue(table.strip("`").startswith("upx.") or table in ctes, f"{f.name}: {table}")
 
 
 class BuildTest(unittest.TestCase):
@@ -83,3 +84,18 @@ class BuildTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PageContractTest(unittest.TestCase):
+    def test_every_dataset_the_page_reads_has_a_query(self):
+        page = (Path(__file__).parent.parent / "app" / "index.html").read_text()
+        used = set(re.findall(r'\bds\("(\w+)"\)', page))
+        have = {f.stem for f in export.QUERIES.glob("*.sql")}
+        self.assertTrue(used, "the page reads no datasets?")
+        self.assertEqual(used - have, set(), "the page reads datasets that no query makes")
+
+    def test_every_market_item_the_page_shows_is_fetched(self):
+        from appdata import markets
+        page = (Path(__file__).parent.parent / "app" / "index.html").read_text()
+        shown = set(re.findall(r'\b(?:market|t|m)\("(\w+)"', page))
+        self.assertEqual(shown - set(markets.LABELS), set())
