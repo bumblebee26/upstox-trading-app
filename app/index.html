@@ -24,7 +24,7 @@ header{background:var(--card);padding:14px 16px;position:sticky;top:0;z-index:5;
 .hrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
 h1{margin:0;font-size:20px;font-weight:700}
 .pill{font-size:12px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.icon{width:36px;height:36px;border-radius:999px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);display:grid;place-items:center;cursor:pointer;padding:0}
 .search{position:relative;margin:12px 0}
 .search input{width:100%;min-height:44px;padding:10px 12px 10px 38px;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--fg);font:inherit;font-size:15px}
 .search svg{position:absolute;left:12px;top:13px}
@@ -445,7 +445,9 @@ function header() {
   const upd = S.data ? `Updated ${dm(S.data.updated_at)}, ${hm(S.data.updated_at)}` : "";
   const sub = S.tab === "stocks" ? `<div class="sub" role="group" aria-label="Stocks sections">${[["desk", "Desk"], ["intraday", "Intraday"], ["swing", "Swing"], ["long", "Long"]].map(([k, n]) => `<button data-sub="${k}" aria-pressed="${S.sub === k}">${n}</button>`).join("")}</div>` : "";
   return `<div class="hrow"><h1>${title}</h1><div class="hrow"><span class="pill" title="${esc(upd)}">Paper money</span>
-    <button class="icon" id="theme" aria-label="Switch to ${dark ? "light" : "dark"} theme">${svgI('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', 16)}</button></div></div>
+    <button class="icon" id="theme" aria-label="Switch to ${dark ? "light" : "dark"} theme">${dark  // like the old app: a sun in dark mode, a moon in light
+      ? svgI('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', 20, 2)
+      : svgI('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', 20, 2)}</button></div></div>
     ${sub}`;
 }
 function render() {
