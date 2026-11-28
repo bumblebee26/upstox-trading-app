@@ -94,13 +94,14 @@ resource "aws_lambda_function" "app_web" {
 }
 
 resource "aws_lambda_function_url" "app_web" {
-  #checkov:skip=CKV_AWS_258:a phone can't sign requests; only the secret path is served (lambdas/app_web.py)
+  #checkov:skip=CKV_AWS_258:owner OK 28 Nov: a phone can't sign requests; only the secret path is served (lambdas/app_web.py)
   function_name      = aws_lambda_function.app_web.function_name
   authorization_type = "NONE"
 }
 
 # A public function URL needs both permissions (AWS, Oct 2025); InvokeFunction only for calls through the URL.
 resource "aws_lambda_permission" "app_web_url" {
+  #checkov:skip=CKV_AWS_301:owner OK 28 Nov: the app must open on a phone; only the secret path is served, everything else is 404
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.app_web.function_name
@@ -109,6 +110,7 @@ resource "aws_lambda_permission" "app_web_url" {
 }
 
 resource "aws_lambda_permission" "app_web_invoke" {
+  #checkov:skip=CKV_AWS_301:owner OK 28 Nov: as above, and only for calls that come through the function URL
   statement_id             = "FunctionURLInvokeAllowPublicAccess"
   action                   = "lambda:InvokeFunction"
   function_name            = aws_lambda_function.app_web.function_name
@@ -118,7 +120,7 @@ resource "aws_lambda_permission" "app_web_invoke" {
 
 # The app's link, for the owner: aws ssm get-parameter --name /upx/app-url --with-decryption
 resource "aws_ssm_parameter" "app_url" {
-  #checkov:skip=CKV_AWS_337:a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; SecureString uses the AWS key
+  #checkov:skip=CKV_AWS_337:owner OK 28 Nov: a customer-managed KMS key costs $1 a month and KMS is not on the AWS free plan; SecureString uses the AWS key
   name        = "/upx/app-url"
   description = "The phone app's link (address + secret path). Anyone with it can open the app."
   type        = "SecureString"

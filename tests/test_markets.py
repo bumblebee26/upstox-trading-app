@@ -42,6 +42,9 @@ class FetchTest(unittest.TestCase):
             return PETROL.encode()
         if "cng" in url:
             return CNG.encode()
+        if "massive" in url:
+            assert kw.get("log_url") and "k3y" not in kw["log_url"], "the key must stay out of logs"
+            return b'{"results": [{"T": "ACN", "c": 268.4, "t": 1795755600000}]}'
         raise AssertionError(url)
 
     def quotes(self, keys):
@@ -49,11 +52,12 @@ class FetchTest(unittest.TestCase):
                 "BSE_INDEX|SENSEX": {"last_price": 84328.59, "timestamp": "2026-11-28T15:37:22.251+05:30"}}
 
     def test_each_source_or_nothing_and_usd_falls_back_to_moneyconvert(self):
-        vals, failed = markets.fetch_all(fetch=self.fetch, quotes=self.quotes)
+        vals, failed = markets.fetch_all(fetch=self.fetch, quotes=self.quotes, massive_key=lambda: "k3y")
         self.assertEqual(vals["usdinr"], {"value": 92.96, "as_of": "2026-11-28", "source": "MoneyConvert"})
         self.assertEqual(vals["nifty50"]["value"], 25607.2)
         self.assertEqual(vals["gold999"]["source"], "IBJA")
         self.assertEqual(vals["cng"]["value"], 91.5)
+        self.assertEqual(vals["acn"], {"value": 268.4, "as_of": "2026-11-27", "source": "Massive"})
         self.assertNotIn("vix", vals)  # no quote came back for it
         self.assertEqual(failed, ["vix"])
 

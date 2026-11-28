@@ -2,7 +2,8 @@
 
 Sources (owner's choice, 27 Nov): Upstox for Nifty 50, Sensex and India VIX; IBJA for gold and silver (the
 closing PM rate of the latest day it published); Coinbase for USD/INR (live, indicative) with MoneyConvert as
-backup; Upstox's Mumbai fuel pages for petrol, diesel and CNG. We keep no history from the sources: the export
+backup; Upstox's Mumbai fuel pages for petrol, diesel and CNG;
+Massive for Accenture's last US close (key in /upx/massive-api-key, added by the owner 28 Nov). We keep no history from the sources: the export
 saves each value with its day, and the app shows the change from the previous saved day (none on the first day).
 A source that fails keeps its last good value and date.
 """
@@ -11,7 +12,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
-from core import http, upstox
+from core import http, ssm, upstox
 
 INDICES = {"nifty50": "NSE_INDEX|Nifty 50", "sensex": "BSE_INDEX|SENSEX", "vix": "NSE_INDEX|India VIX"}
 FUEL = {"petrol": "petrol", "diesel": "diesel", "cng": "cng"}
@@ -19,10 +20,13 @@ FUEL_URL = "https://upstox.com/{0}-price/{0}-price-in-mumbai/"
 IBJA_URL = "https://www.ibjarates.com/"
 COINBASE_URL = "https://api.coinbase.com/v2/exchange-rates?currency=USD"
 MONEYCONVERT_URL = "https://cdn.moneyconvert.net/api/latest.json"
+MASSIVE_URL = "https://api.massive.com/v2/aggs/ticker/ACN/prev?adjusted=true&apiKey={}"
+MASSIVE_KEY = "/upx/massive-api-key"
 LABELS = {"nifty50": ("Nifty 50", ""), "sensex": ("Sensex", ""), "vix": ("India VIX", ""),
           "gold999": ("Gold 999", "₹ / 1 g"), "silver999": ("Silver 999", "₹ / 1 kg"),
           "usdinr": ("USD/INR", "₹ per $1, indicative"),
-          "petrol": ("Petrol", "₹ / 1 L"), "diesel": ("Diesel", "₹ / 1 L"), "cng": ("CNG", "₹ / 1 kg")}
+          "petrol": ("Petrol", "₹ / 1 L"), "diesel": ("Diesel", "₹ / 1 L"), "cng": ("CNG", "₹ / 1 kg"),
+          "acn": ("Accenture (NYSE)", "$ per share, last US close")}
 IST = timezone(timedelta(hours=5, minutes=30))
 SCRAPED = ("gold999", "silver999", "petrol", "diesel", "cng")
 BAND = 0.15  # a scraped price more than 15% from the last good one is a misread page, not a real move
@@ -57,7 +61,7 @@ def parse_fuel(html):
     return float(m[2].replace(",", "")), datetime.strptime(m[1], "%d %B %Y").date().isoformat()
 
 
-def fetch_all(fetch=http.request, quotes=upstox.quotes):
+def fetch_all(fetch=http.request, quotes=upstox.quotes, massive_key=lambda: ssm.get(MASSIVE_KEY)):
     """({item: {value, as_of, source}}, [items that failed]). Each source is tried on its own."""
     vals, failed = {}, []
 
@@ -91,6 +95,12 @@ def fetch_all(fetch=http.request, quotes=upstox.quotes):
             take(item, value, day, "Upstox")
         except Exception:  # noqa: BLE001
             pass
+    try:  # Massive's previous US close for Accenture; the key never reaches the logs
+        bar = json.loads(fetch("GET", MASSIVE_URL.format(massive_key()), timeout=20,
+                               log_url=MASSIVE_URL.format("<key>")))["results"][0]
+        take("acn", bar["c"], datetime.fromtimestamp(bar["t"] / 1000, timezone.utc).date().isoformat(), "Massive")
+    except Exception:  # noqa: BLE001
+        pass
     return vals, [i for i in LABELS if i not in vals]
 
 
