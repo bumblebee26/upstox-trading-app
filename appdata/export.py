@@ -48,7 +48,8 @@ def stock_file(day, app, fetch):
     storage.put_json(INDICES, book, store=app)
     gz = fetch("GET", upstox.INSTRUMENTS_URL, timeout=60)
     eq = upstox.parse_instruments(gz)["eq"]
-    lists = book["lists"]
+    nse = book["lists"]
+    lists = dict(list(nse.items())[:1] + [("Sensex", stocks.sensex(nse))] + list(nse.items())[1:])  # chip order: Nifty 50, Sensex, ...
     storage.put_json(STOCKS, {"day": day.isoformat(), "stocks": stocks.stock_list(eq, lists, stocks.fo_lots(gz, set(eq))),
                               "indices": {k: [r["symbol"] for r in v] for k, v in lists.items()},
                               "failed": book["failed"]}, store=app)

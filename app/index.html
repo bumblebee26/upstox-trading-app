@@ -89,7 +89,7 @@ nav.bar button[aria-current=page]{color:var(--accent);box-shadow:inset 0 2px 0 v
 // ---- State and preferences (kept on this phone only) -------------------------------------------------------
 const P = (() => { try { return JSON.parse(localStorage.getItem("upx-prefs") || "{}"); } catch (e) { return {}; } })();
 function save() { try { localStorage.setItem("upx-prefs", JSON.stringify(P)); } catch (e) { /* private mode */ } }
-const S = {tab: P.tab || "stocks", sub: P.sub || "desk", q: "", open: {}, sector: null, index: P.index || "Nifty 50",
+const S = {tab: P.tab || "stocks", sub: P.sub || "desk", q: "", open: {}, sector: null, page: null,
            list: 0, feed: "All", data: null, stocks: null, error: null};
 if (P.theme) document.documentElement.dataset.theme = P.theme;
 
@@ -421,10 +421,18 @@ function marketsTab() {
   const sec = sectors();
   if (sec.length) {
     const [s, mode] = sw("secview", ["Grid", "List"]);
-    const open = sec.find(x => x.name === S.sector);
-    const body = mode === "Grid" ? `<div class="sec">${sec.map(x => `<button data-sector="${esc(x.name)}" aria-pressed="${S.sector === x.name}"><span style="font-size:12px">${esc(x.name)}</span><b class="${cls(x.chg)}">${pct(x.chg)}</b></button>`).join("")}</div>`
-      : sec.map(x => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>`).join("");
-    const list = open ? `<div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px"><span class="lbl">${esc(open.name)}, ${open.rows.length} stocks</span>${topN("sec:" + open.name, open.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => row(`${esc(r.symbol)} ${link(r.symbol)}`, rs(r.close, 2), pct(r.change_pct), cls(r.change_pct))))}</div>` : "";
+    const listOf = (x, label) => `<div style="grid-column:1/-1;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:8px 0;display:flex;flex-direction:column;gap:4px">${label ? `<span class="lbl">${esc(x.name)}, ${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span>` : ""}${topN("sec:" + x.name, x.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => row(`${esc(r.symbol)} ${link(r.symbol)}`, rs(r.close, 2), pct(r.change_pct), cls(r.change_pct))))}</div>`;
+    const SHORT = {"Telecommunication": "Telecom", "Information Technology": "IT", "Oil Gas & Consumable Fuels": "Oil & Gas",
+      "Fast Moving Consumer Goods": "FMCG", "Automobile and Auto Components": "Auto", "Media Entertainment & Publication": "Media",
+      "Construction Materials": "Cement etc.", "Consumer Durables": "Durables"};  // grid tiles are narrow; the list view keeps full names
+    const at = sec.findIndex(x => x.name === S.sector);
+    let body;
+    if (mode === "Grid") {  // the list goes after the row of three that holds the tapped sector
+      const cells = sec.map(x => `<button data-sector="${esc(x.name)}" aria-pressed="${S.sector === x.name}" aria-expanded="${S.sector === x.name}"><span style="font-size:12px;overflow-wrap:anywhere">${esc(SHORT[x.name] || x.name)}</span><b class="${cls(x.chg)}">${pct(x.chg)}</b></button>`);
+      if (at >= 0) cells.splice(Math.min(sec.length, Math.floor(at / 3) * 3 + 3), 0, listOf(sec[at], true));
+      body = `<div class="sec">${cells.join("")}</div>`;
+    } else body = sec.map((x, i) => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}" aria-expanded="${i === at}"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>` + (i === at ? listOf(x) : "")).join("");
+    const list = "";
     h += card(`Sectors at the close · ${dm(sec[0].day)}`, body + list, s);
   }
   const g = [t("gold999", 0, true), t("silver999", 0, true)].filter(Boolean);
@@ -455,37 +463,56 @@ function searchBox() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--mute)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     <input id="q" type="search" placeholder="Search stocks" autocomplete="off" value="${esc(S.q)}" style="background:var(--card)"><div id="sugg">${suggestions()}</div></div>`;
 }
+const INDEX_PAGES = {  // indices in search; slugs checked against upstox.com/indices on 28 Nov
+  "Nifty 50": "nifty-50", "Sensex": "sensex", "Nifty Next 50": "nifty-next-50", "Bank Nifty": "nifty-bank",
+  "Nifty 100": "nifty-100", "Nifty 200": "nifty-200", "Nifty 500": "nifty-500", "Fin Nifty": "nifty-fin-service",
+  "Nifty Midcap 50": "nifty-midcap-50", "Nifty Smallcap 50": "nifty-smlcap-50", "India VIX": "india-vix",
+  "BSE 100": "bse100", "BSE 200": "bse200", "BSE 500": "bse500", "BSE Midcap": "midcap", "BSE Smallcap": "smlcap"};
+const indexLink = n => `https://upstox.com/indices/${INDEX_PAGES[n]}-share-price/`;
+function exploreLists() {  // name -> rows, for Today's lists
+  const eq = new Map(ds("eq_day").map(r => [r.symbol, r])), all = ds("eq_day").filter(r => stockOf(r.symbol));
+  const srow = (sym, sub) => { const e = eq.get(sym), st = stockOf(sym); return row(`${esc(sym)} ${link(sym)}`, sub != null ? sub : esc(st ? st.n : ""), e ? pct(e.change_pct) : "", e ? cls(e.change_pct) : ""); };
+  return {srow, lists: {
+    "Top gainers": () => all.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol, rs(r.close, 2))),
+    "Top losers": () => all.slice().sort((a, b) => a.change_pct - b.change_pct).map(r => srow(r.symbol, rs(r.close, 2))),
+    "Most active (volume)": () => all.slice().sort((a, b) => b.volume - a.volume).map(r => srow(r.symbol, num(r.volume) + " shares")),
+    "Most active (value)": () => all.slice().sort((a, b) => b.turnover_cr - a.turnover_cr).map(r => srow(r.symbol, rs(r.turnover_cr, 0) + " cr")),
+    "Highest delivery %": () => all.filter(r => r.deliv_pct != null && r.volume > 1e5).sort((a, b) => b.deliv_pct - a.deliv_pct).map(r => srow(r.symbol, num(r.deliv_pct, 1) + "% delivered")),
+    "52-week highs": () => all.filter(r => r.hi52 && r.close >= r.hi52 * 0.999).map(r => srow(r.symbol, "at " + rs(r.close, 2))),
+    "52-week lows": () => all.filter(r => r.lo52 && r.close <= r.lo52 * 1.001).map(r => srow(r.symbol, "at " + rs(r.close, 2))),
+    "Bulk and block deals": () => ds("deals").map(d => row(`${esc(d.symbol)} ${link(d.symbol)}`, `${esc(d.kind)}, ${esc(d.client)}, ${dm(d.day)}`, `${esc(d.side)} ${rs(d.value_cr, 1)} cr`)),
+    "In the news": () => ds("filings").map(f => row(`${esc(f.symbol)} ${link(f.symbol)}`, `${esc((f.what || "").slice(0, 60))}, ${dm(f.filed_at)}`, f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">Filing ↗</a>` : "")),
+    "From our pools": () => [...new Set(ds("decisions").map(e => e.symbol).filter(Boolean))].map(sym => { const e = ds("decisions").find(x => x.symbol === sym);
+      return srow(sym, `${POOL[e.pool] || e.pool}, ${({exit: "sold", pass: "passed", fill: "bought", placed: "placed", review: "proposed", skipped: "skipped", not_approved: "not approved"})[e.event] || e.event}, ${dm(e.trade_date)}`); }),
+    "F&O stocks": () => S.stocks.stocks.filter(x => x.lot).map(x => srow(x.s, `${esc(x.n)}, lot ${num(x.lot)}`))}};
+}
+const openBtn = (kind, name, sub, right, c) => `<button class="row" data-open="${kind}" data-name="${esc(name)}" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer"><span class="n"><b style="font-weight:600">${esc(name)}</b>${sub ? `<span>${sub}</span>` : ""}</span><span class="r ${c || "mute"}">${right || "›"}</span></button>`;
+function explorePage() {  // one selected index, sector or list on its own page
+  const {kind, name} = S.page, {srow, lists} = exploreLists(), eq = new Map(ds("eq_day").map(r => [r.symbol, r]));
+  let rows = [], extra = "";
+  if (kind === "index") {
+    rows = ((S.stocks.indices || {})[name] || []).slice().sort((a, b) => ((eq.get(b) || {}).change_pct || 0) - ((eq.get(a) || {}).change_pct || 0)).map(x => srow(x));
+    if (INDEX_PAGES[name]) extra = `<a href="${indexLink(name)}" target="_blank" rel="noopener">${esc(name)} on Upstox ↗</a>`;
+  } else if (kind === "sector") {
+    const sec = sectors().find(x => x.name === name);
+    rows = sec ? sec.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol)) : [];
+  } else rows = lists[name] ? lists[name]() : [];
+  const back = `<button class="more" data-back="1" style="font-size:14px">‹ Explore</button>`;
+  return back + card(esc(name), (extra ? `<span>${extra}</span>` : "") + (rows.length ? rows.join("") : note("Nothing here today.")), `<span class="lbl">${rows.length}</span>`);
+}
 function exploreTab() {
   if (!S.stocks) return card("", note("The stock list hasn't loaded yet."));
-  const eq = new Map(ds("eq_day").map(r => [r.symbol, r]));
-  const srow = (sym, sub) => { const e = eq.get(sym), s = stockOf(sym); return row(`${esc(sym)} ${link(sym)}`, sub != null ? sub : esc(s ? s.n : ""), e ? pct(e.change_pct) : "", e ? cls(e.change_pct) : ""); };
+  if (S.page) return explorePage();
   let h = searchBox();
   const recent = P.recent || [];
-  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(s => { const x = stockOf(s); return x ? `<a class="chip" href="${esc(x.u)}" target="_blank" rel="noopener" data-viewed="${esc(s)}">${esc(s)}</a>` : ""; }).join("")}</div>`);
+  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(x => { const st = stockOf(x); return st ? `<a class="chip" href="${esc(st.u)}" target="_blank" rel="noopener" data-viewed="${esc(x)}">${esc(x)}</a>` : ""; }).join("")}</div>`);
   const ix = S.stocks.indices || {}, names = Object.keys(ix);
-  if (names.length) {
-    const on = names.includes(S.index) ? S.index : names[0];
-    const members = (ix[on] || []).slice().sort((a, b) => ((eq.get(b) || {}).change_pct || 0) - ((eq.get(a) || {}).change_pct || 0));
-    h += card("By index", `<div class="chips">${names.map(n => `<button class="chip" data-index="${esc(n)}" aria-pressed="${n === on}">${esc(n)}</button>`).join("")}</div>` + topN("ix:" + on, members.map(s => srow(s))), `<span class="lbl">${esc(on)}, ${members.length}</span>`);
-  }
+  if (names.length) h += card("By index", `<div class="chips">${names.map(n => `<button class="chip" data-open="index" data-name="${esc(n)}">${esc(n)} <span class="mute">${ix[n].length}</span></button>`).join("")}</div>`);
   const sec = sectors();
-  if (sec.length) h += card("By sector", topN("bysec", sec.map(x => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}" data-goto="markets"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>`)));
-  const all = ds("eq_day").filter(r => stockOf(r.symbol));
-  const LISTS = [["Top gainers", () => all.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol, rs(r.close, 2)))],
-    ["Top losers", () => all.slice().sort((a, b) => a.change_pct - b.change_pct).map(r => srow(r.symbol, rs(r.close, 2)))],
-    ["Most active (volume)", () => all.slice().sort((a, b) => b.volume - a.volume).map(r => srow(r.symbol, num(r.volume) + " shares"))],
-    ["Most active (value)", () => all.slice().sort((a, b) => b.turnover_cr - a.turnover_cr).map(r => srow(r.symbol, rs(r.turnover_cr, 0) + " cr"))],
-    ["Highest delivery %", () => all.filter(r => r.deliv_pct != null && r.volume > 1e5).sort((a, b) => b.deliv_pct - a.deliv_pct).map(r => srow(r.symbol, num(r.deliv_pct, 1) + "% delivered"))],
-    ["52-week highs", () => all.filter(r => r.hi52 && r.close >= r.hi52 * 0.999).map(r => srow(r.symbol, "at " + rs(r.close, 2)))],
-    ["52-week lows", () => all.filter(r => r.lo52 && r.close <= r.lo52 * 1.001).map(r => srow(r.symbol, "at " + rs(r.close, 2)))],
-    ["Bulk and block deals", () => ds("deals").map(d => row(`${esc(d.symbol)} ${link(d.symbol)}`, `${esc(d.kind)}, ${esc(d.client)}, ${dm(d.day)}`, `${esc(d.side)} ${rs(d.value_cr, 1)} cr`))],
-    ["In the news", () => ds("filings").map(f => row(`${esc(f.symbol)} ${link(f.symbol)}`, `${esc((f.what || "").slice(0, 60))}, ${dm(f.filed_at)}`, f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">Filing ↗</a>` : ""))]];
-  const [ls, which] = sw("lists", LISTS.map(l => l[0])), rows = LISTS.find(l => l[0] === which)[1]();
-  h += card("Today's lists", rows.length ? topN("list:" + which, rows) : note("Nothing on this list today."), ls);
-  const ours = [...new Set(ds("decisions").map(e => e.symbol).filter(Boolean))];
-  if (ours.length) h += card("From our pools", topN("ours", ours.map(s => { const e = ds("decisions").find(x => x.symbol === s); return srow(s, `${POOL[e.pool] || e.pool}, ${({exit: "sold", pass: "passed", fill: "bought", placed: "placed", review: "proposed", skipped: "skipped", not_approved: "not approved"})[e.event] || e.event}, ${dm(e.trade_date)}`); })));
-  const fo = S.stocks.stocks.filter(s => s.lot);
-  if (fo.length) h += card("F&O stocks", topN("fo", fo.map(s => srow(s.s, `${esc(s.n)}, lot ${num(s.lot)}`))), `<span class="lbl">${fo.length}</span>`);
+  if (sec.length) h += card("By sector", topN("bysec", sec.map(x => openBtn("sector", x.name, `${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}`, pct(x.chg), cls(x.chg)))));
+  const {lists} = exploreLists();
+  h += card("Today's lists", Object.keys(lists).filter(n => n !== "From our pools" && n !== "F&O stocks").map(n => openBtn("list", n)).join(""));
+  h += card("More lists", ["From our pools", "F&O stocks"].map(n => openBtn("list", n)).join(""));
   return h;
 }
 
@@ -527,8 +554,13 @@ const svgI = (p, w = 24, sw2 = 1.8) => `<svg width="${w}" height="${w}" viewBox=
 function suggestions() {
   const q = S.q.trim().toUpperCase();
   if (!q || !S.stocks) return "";
+  const idx = Object.keys(INDEX_PAGES).filter(n => n.toUpperCase().includes(q)).map(n => {
+    const m = market(n === "Nifty 50" ? "nifty50" : n === "Sensex" ? "sensex" : n === "India VIX" ? "vix" : "");
+    const has = ((S.stocks.indices || {})[n] || []).length, sub = `Index${has ? `, ${has} stocks` : ""}${m ? `, ${num(m.value, m.value >= 1000 ? 0 : 2)} (${pct(m.change_pct)})` : ""}`;
+    return `<div class="row" style="padding:8px 12px">${has ? `<button data-open="index" data-name="${esc(n)}" class="n" style="background:none;border:0;padding:0;text-align:left;cursor:pointer;color:var(--fg)">` : `<span class="n">`}<b style="font-weight:600">${esc(n)}</b><span>${sub}</span>${has ? "</button>" : "</span>"}<a class="r" href="${indexLink(n)}" target="_blank" rel="noopener" style="font-size:13px">Upstox ↗</a></div>`;
+  }).join("");
   const hits = S.stocks.stocks.filter(s => s.s.startsWith(q)).concat(S.stocks.stocks.filter(s => !s.s.startsWith(q) && s.n.toUpperCase().includes(q))).slice(0, 8);
-  return `<div class="sugg" role="listbox" aria-label="Matching stocks">${hits.length ? hits.map(s => `<a href="${esc(s.u)}" target="_blank" rel="noopener" data-viewed="${esc(s.s)}" class="row" style="padding:8px 12px;color:var(--fg)"><span class="n"><b style="font-weight:600">${esc(s.s)}</b><span>${esc(s.n)}</span></span><span class="r" style="color:var(--accent);font-size:13px">Upstox ↗</span></a>`).join("") : `<p class="note" style="padding:12px">No stock matches “${esc(S.q)}”.</p>`}</div>`;
+  return `<div class="sugg" role="listbox" aria-label="Matching stocks and indices">${idx}${hits.length || idx ? hits.map(s => `<a href="${esc(s.u)}" target="_blank" rel="noopener" data-viewed="${esc(s.s)}" class="row" style="padding:8px 12px;color:var(--fg)"><span class="n"><b style="font-weight:600">${esc(s.s)}</b><span>${esc(s.n)}</span></span><span class="r" style="color:var(--accent);font-size:13px">Upstox ↗</span></a>`).join("") : `<p class="note" style="padding:12px">No stock or index matches “${esc(S.q)}”.</p>`}</div>`;
 }
 function header() {
   const title = S.tab === "stocks" ? "Stocks" : TABS.find(t => t[0] === S.tab)[1];
@@ -563,14 +595,15 @@ document.addEventListener("click", e => {
   if (d.viewed) { P.recent = [d.viewed].concat((P.recent || []).filter(s => s !== d.viewed)).slice(0, 10); save(); return; }
   if (t.tagName === "A") return;
   if (t.id === "theme") { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; P.theme = dark ? "dark" : "light"; save(); return render(); }
-  if (d.tab) { S.tab = P.tab = d.tab; S.q = ""; save(); window.scrollTo(0, 0); return render(); }
+  if (d.tab) { S.tab = P.tab = d.tab; S.q = ""; S.page = null; save(); window.scrollTo(0, 0); return render(); }
   if (d.sub) { S.sub = P.sub = d.sub; save(); return render(); }
   if (d.sw) { P.sw = P.sw || {}; P.sw[d.sw] = ((P.sw[d.sw] || 0) + 1) % +d.n; save(); return render(); }
   if (d.seg) { P.seg = P.seg || {}; P.seg[d.seg] = d.v; save(); return render(); }
   if (d.more) { S.open[d.more] = !S.open[d.more]; return render(); }
   if (d.hl) { P.hl = P.hl || {}; P.hl[d.hl] = P.hl[d.hl] === d.name ? null : d.name; S.open["lg:" + d.hl] = true; save(); return render(); }
-  if (d.sector) { S.sector = S.sector === d.sector ? null : d.sector; if (d.goto) { S.tab = P.tab = d.goto; save(); } return render(); }
-  if (d.index) { S.index = P.index = d.index; save(); return render(); }
+  if (d.sector) { S.sector = S.sector === d.sector ? null : d.sector; return render(); }
+  if (d.open) { S.page = {kind: d.open, name: d.name}; S.q = ""; window.scrollTo(0, 0); return render(); }
+  if (d.back) { S.page = null; return render(); }
   if (d.feed) { S.feed = d.feed; return render(); }
 });
 document.addEventListener("toggle", e => { if (e.target.dataset && e.target.dataset.lgd) S.open["lg:" + e.target.dataset.lgd] = e.target.open; }, true);

@@ -24,6 +24,18 @@ INDEX_FILES = {
     "PSU Bank": "ind_niftypsubanklist.csv", "Realty": "ind_niftyrealtylist.csv", "Energy": "ind_niftyenergylist.csv",
 }
 
+# shortcut: the BSE has no free constituent file, so the 30 Sensex members are listed here (as of the
+# 22 Dec 2025 change). BSE reviews them every June and December: update this list at the next review.
+SENSEX = ("ADANIPORTS", "ASIANPAINT", "AXISBANK", "BAJFINANCE", "BAJAJFINSV", "BEL", "BHARTIARTL", "ETERNAL", "HCLTECH",
+          "HDFCBANK", "HINDUNILVR", "ICICIBANK", "INDIGO", "INFY", "ITC", "KOTAKBANK", "LT", "M&M", "MARUTI", "NTPC",
+          "POWERGRID", "RELIANCE", "SBIN", "SUNPHARMA", "TCS", "TATASTEEL", "TECHM", "TITAN", "TRENT", "ULTRACEMCO")
+
+
+def sensex(lists, members=SENSEX):
+    """Sensex rows, with names and industries taken from the NSE lists (every member is also an NSE large cap)."""
+    known = {r["symbol"]: r for rows in lists.values() for r in rows}
+    return [known[s] for s in members if s in known]
+
 
 def upstox_link(name, isin):
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower().replace("&", " and ")).strip("-")
