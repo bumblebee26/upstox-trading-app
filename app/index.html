@@ -21,20 +21,28 @@ a{color:var(--accent);text-decoration:none}
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wrap{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
-header{background:var(--card);padding:14px 16px;position:sticky;top:0;z-index:5;border-bottom:1px solid var(--line)}
+header{background:var(--card);padding:12px 16px;position:sticky;top:0;z-index:5;border-bottom:1px solid var(--line)}
 .hrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
-h1{margin:0;font-size:20px;font-weight:700}
-.pill{font-size:12px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.icon{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);display:grid;place-items:center;cursor:pointer;padding:0}
+h1{margin:0;font-size:19px;line-height:1.1;font-weight:700}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}.brand img{width:34px;height:34px;border-radius:9px}
+.upd{display:block;font-size:11px;color:var(--mute);margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:999px;padding:6px 10px;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.icon{width:40px;height:40px;border-radius:50%;border:0;background:var(--soft);color:var(--fg);display:grid;place-items:center;cursor:pointer;padding:0}
 .search{position:relative;margin:12px 0}
 .search input{width:100%;min-height:44px;padding:10px 12px 10px 38px;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--fg);font:inherit;font-size:15px}
 .search svg{position:absolute;left:12px;top:13px}
 .sugg{position:absolute;left:0;right:0;top:48px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:6}
-.sub{display:flex;gap:24px;margin-top:10px}
-.sub button{background:none;border:0;padding:8px 0 10px;margin-bottom:-14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;min-height:40px}
-.sub button[aria-pressed=true]{color:var(--fg);font-weight:600;border-color:var(--accent)}
+.sub{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px;background:var(--soft);padding:4px;border-radius:12px}
+.sub button{background:none;border:0;padding:0;min-height:38px;border-radius:9px;font-size:13px;font-weight:600;color:var(--mute);cursor:pointer;transition:background .15s,color .15s}
+.sub button[aria-pressed=true]{background:var(--card);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 main{padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;padding-bottom:84px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;min-width:0}
+.r small{display:block;font-size:11px;font-weight:400;color:var(--mute);text-align:right}
+.call{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.call .ct{display:flex;justify-content:space-between;align-items:baseline}.call .ct b{font-size:22px}
+.call .ct span{font-weight:600}.call .ct small{display:block;font-size:12px;color:var(--mute);font-weight:400}
+.meter{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}.meter i{display:block;height:100%;border-radius:3px;background:var(--accent)}
 .card h2{margin:0;font-size:15px;font-weight:700}
 .ch{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .sw{background:none;border:0;padding:4px 2px;color:var(--mute);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:32px}
@@ -160,6 +168,7 @@ const row = (name, sub, right, c = "") => `<div class="row"><div class="n"><b st
 const tile = (l, v, c, cc = "mute") => `<div class="tile"><span class="lbl">${l}</span><b>${v}</b><span class="c ${cc}">${c}</span></div>`;
 const tiles = (items, n, plain) => `<div class="tiles${plain ? " plain" : ""}" style="grid-template-columns:repeat(${n || items.length},minmax(0,1fr))">${items.join("")}</div>`;
 const note = t => `<p class="note">${t}</p>`;
+const two = (v, sub) => `${v}<small>${sub}</small>`;  // a value with a small grey line under it
 function sw(id, options) {  // the small ‹ › switch; returns [button html, chosen option]
   const i = ((P.sw || {})[id] || 0) % options.length;
   return [`<button class="sw" data-sw="${id}" data-n="${options.length}" aria-label="Switch ${esc(options[i])}">‹ ${esc(options[i])} ›</button>`, options[i]];
@@ -292,14 +301,14 @@ function intraday() {
   const t = ds("trades").filter(r => r.pool === "intraday"), won = t.filter(r => r.won), wins = won.reduce((a, r) => a + r.net_rs, 0);
   const losses = t.filter(r => !r.won).reduce((a, r) => a + r.net_rs, 0);
   if (t.length) h += tiles([tile("Win rate", pct(won.length / t.length * 100, 0).replace("+", ""), `of ${t.length} trades`),
-                            tile("Average a trade", srs(t.reduce((a, r) => a + r.net_rs, 0) / t.length), "last 90 days", cls(wins + losses)),
+                            tile("Per trade", srs(t.reduce((a, r) => a + r.net_rs, 0) / t.length), "last 90 days", cls(wins + losses)),
                             tile("Profit factor", losses ? num(wins / -losses, 2) : "–", "won ÷ lost", wins + losses >= 0 ? "up" : "dn")], 3, true);
   h += realVsShadows("intraday");
   const brief = ds("feed").find(r => KIND(r.text || "") === "Briefs");
   if (brief) h += card("Market this morning", `<p class="note" style="white-space:pre-wrap">${esc(brief.text)}</p>`, `<span class="lbl">${dm(brief.sent_at)}, ${hm(String(brief.sent_at).replace(" ", "T"))}</span>`);
   const exits = ev.filter(e => e.event === "exit").map(e => {
     const tl = ds("timeline").find(x => x.review_id === e.review_id);
-    const sub = tl ? `facts ${num(tl.facts_s)} s, AI ${num(tl.ai_decide_s / 60, 1)} min, council ${num(tl.council_s)} s, ${esc(tl.approval || "")} ${num(tl.approval_s)} s, held ${num(tl.hold_min)} min` : esc(e.reason || "");
+    const sub = tl ? `Held ${num(tl.hold_min)} min, ${tl.approval === "auto" ? "approved automatically" : "approved by you"}` : esc(e.reason || "");
     const c = charts().find(x => x.review_id === e.review_id);
     return row(`${esc(e.symbol)} ${link(e.symbol)}`, sub, srs(e.net_rs), cls(e.net_rs)) + (c ? candleChart(c, e) : "");
   });
@@ -339,11 +348,10 @@ function councilTest() {
   const c = ds("council").filter(r => r.net_rs != null);
   if (!c.length) return "";
   const won = r => r.net_rs > 0 ? 1 : 0, right = k => c.filter(r => r[k] != null && (r[k] >= 50) === (won(r) === 1)).length;
-  const brier = k => { const x = c.filter(r => r[k] != null); return x.length ? x.reduce((a, r) => a + (r[k] / 100 - won(r)) ** 2, 0) / x.length : null; };
   const follow = k => c.filter(r => r[k] != null && r[k] >= 50).reduce((a, r) => a + r.net_rs, 0);
   const dis = c.filter(r => r.ai_yes_pct != null && r.council_yes_pct != null && (r.ai_yes_pct >= 50) !== (r.council_yes_pct >= 50));
-  return card("Council test (paper)", row("Council", `${c.length} judged, right ${pct(right("council_yes_pct") / c.length * 100, 0).replace("+", "")}, Brier ${num(brier("council_yes_pct"), 2)}`, srs(follow("council_yes_pct")), cls(follow("council_yes_pct")))
-    + row("AI alone", `right ${pct(right("ai_yes_pct") / c.length * 100, 0).replace("+", "")}, Brier ${num(brier("ai_yes_pct"), 2)}`, srs(follow("ai_yes_pct")), cls(follow("ai_yes_pct")))
+  return card("Council test (paper)", row("Council", `right on ${pct(right("council_yes_pct") / c.length * 100, 0).replace("+", "")} of ${c.length} trades`, srs(follow("council_yes_pct")), cls(follow("council_yes_pct")))
+    + row("AI alone", `right on ${pct(right("ai_yes_pct") / c.length * 100, 0).replace("+", "")} of ${c.length} trades`, srs(follow("ai_yes_pct")), cls(follow("ai_yes_pct")))
     + (dis.length ? note(`They disagreed on ${dis.length}: the council's side made ${srs(dis.filter(r => r.council_yes_pct >= 50).reduce((a, r) => a + r.net_rs, 0))}.`) : ""),
     `<span class="lbl">last 90 days</span>`);
 }
@@ -397,9 +405,9 @@ function holdPool(pool) {
                `${p.open} holding, ${ev.filter(e => e.event === "fill" || e.event === "placed").length} bought, ${ev.filter(e => e.event === "exit").length} sold`);
   const kind = pool === "swing" ? "swing" : "long-term", latest = latestDay(ds("shadow_values"));
   const shTrades = ds("shadow_values").filter(r => r.kind === kind && r.day === latest).reduce((a, r) => a + (r.closed_trades || 0), 0);
-  h += tiles([tile("Return", pct((p.balance / p.start - 1) * 100), "since the start", cls(p.balance - p.start)),
-              tile("Trades", `${ds("trades").filter(r => r.pool === pool).length} / ${shTrades}`, "real / shadows"),
-              tile("Open", String(p.open), "positions")], 3, true);
+  h += tiles([tile("Return", pct((p.balance / p.start - 1) * 100), "overall", cls(p.balance - p.start)),
+              tile("Trades", String(ds("trades").filter(r => r.pool === pool).length), `${shTrades} by shadows`),
+              tile("Open now", String(p.open), p.open === 1 ? "position" : "positions")], 3, true);
   h += realVsShadows(pool);
   const read = todaysRead();
   if (read) h += note("Today's read: " + read.replace(/^./, c => c.toLowerCase()));
@@ -411,8 +419,8 @@ function holdPool(pool) {
     const [hs, hm2] = sw("hold" + pool, ["Current", "Returns"]);
     h += card("Holdings now", topN("hold" + pool, held.map(x => {
       const val = (x.now || x.avg) * x.qty, cost = x.avg * x.qty, days = x.since ? Math.round((new Date(p.day) - new Date(x.since)) / 864e5) : null;
-      return row(`${esc(x.symbol)} ${link(x.symbol)}`, `${num(x.qty)} @ ${rs(x.avg, 2)}${x.now ? `, now ${rs(x.now, 2)}` : ""}${days != null ? `, day ${days + 1}` : ""}`,
-        hm2 === "Current" ? `${rs(val)} (${rs(cost)})` : pct((val / cost - 1) * 100), cls(val - cost));
+      return row(`${esc(x.symbol)} ${link(x.symbol)}`, `${num(x.qty)} shares, bought at ${rs(x.avg, 2)}${x.now ? `, now ${rs(x.now, 2)}` : ""}${days != null ? `, day ${days + 1}` : ""}`,
+        hm2 === "Current" ? two(rs(val), "cost " + rs(cost)) : pct((val / cost - 1) * 100), cls(val - cost));
     })), hs);
   }
   const dec = latestEvent(pool, "decision");
@@ -432,8 +440,8 @@ function holdPool(pool) {
   const benchId = pool === "swing" ? "B01" : "B02";  // each pool's own NIFTYBEES benchmark
   const rows = ds("shadow_values").filter(r => r.day === latest && (r.kind === kind || r.shadow === benchId)).sort((a, b) => b.gain_pct - a.gain_pct);
   const bench = rows.find(r => r.shadow === benchId);
-  const fmt = r => mode === "Current" ? `${rs(r.value)} (${rs(r.capital)})` : mode === "Returns" ? pct(r.gain_pct) : pct(r.gain_pct - (bench ? bench.gain_pct : 0));
-  const realRow = row("Real", `${ds("trades").filter(r => r.pool === pool).length} trades`, mode === "Current" ? `${rs(p.balance)} (${rs(p.start)})` : mode === "Returns" ? pct((p.balance / p.start - 1) * 100) : pct((p.balance / p.start - 1) * 100 - (bench ? bench.gain_pct : 0)), cls(p.balance - p.start));
+  const fmt = r => mode === "Current" ? two(rs(r.value), "from " + rs(r.capital)) : mode === "Returns" ? pct(r.gain_pct) : pct(r.gain_pct - (bench ? bench.gain_pct : 0));
+  const realRow = row("Real", `${ds("trades").filter(r => r.pool === pool).length} trades`, mode === "Current" ? two(rs(p.balance), "from " + rs(p.start)) : mode === "Returns" ? pct((p.balance / p.start - 1) * 100) : pct((p.balance / p.start - 1) * 100 - (bench ? bench.gain_pct : 0)), cls(p.balance - p.start));
   if (rows.length) h += card("Scoreboard", realRow + topN("sb" + pool, rows.map((r, i) => row(`${i === 0 && r.kind !== "benchmark" ? "★ " : ""}${esc(r.shadow)}`, r.kind === "benchmark" ? "NIFTYBEES, benchmark" : `${r.holdings} held, ${r.closed_trades} closed`, fmt(r), cls(r.gain_pct)))), s);
   const best = rows.find(r => r.kind !== "benchmark");
   return h + (best ? note(`★ Best shadow: ${esc(best.shadow)}, ${pct(best.gain_pct)}.`) : "");
@@ -553,14 +561,15 @@ function exploreTab() {
   return h;
 }
 
-// ---- Ratings and Performance ---------------------------------------------------------------------------------
+// ---- Scorecard (ratings and performance) ---------------------------------------------------------------------
 function ratingsTab() {
   const calls = ds("your_calls"), sum = r => calls.filter(c => c.rating === r).reduce((a, c) => ({t: a.t + c.trades, w: a.w + (r === "up" ? c.won : c.trades - c.won)}), {t: 0, w: 0});
   const u = sum("up"), d = sum("down"), un = sum("unrated");
   let h = "";
-  if (calls.length) h += card("Your calls", tiles([tile("Thumbs-up right", u.t ? pct(u.w / u.t * 100, 0).replace("+", "") : "–", `of ${u.t}`, "up"),
-                                                   tile("Thumbs-down right", d.t ? pct(d.w / d.t * 100, 0).replace("+", "") : "–", `of ${d.t}`, "up"),
-                                                   tile("Unrated", String(un.t), "trades")], 3));
+  const call = (said, x, how) => { const p = x.t ? Math.round(x.w / x.t * 100) : null;
+    return `<div class="call"><div class="ct"><span>When you said ${said}<small>${x.t ? `${x.w} of ${x.t} ${how}` : "no trades yet"}</small></span><b>${p == null ? "–" : p + "%"}</b></div><div class="meter"><i style="width:${p || 0}%"></i></div></div>`; };
+  if (calls.length) h += card("Your calls", call("Yes", u, "made money") + call("No", d, "lost money, so you were right")
+    + (un.t ? note(`${un.t} trade${un.t === 1 ? "" : "s"} went ahead without your call.`) : ""));
   const daily = ds("trading_daily");
   if (daily.length) {
     const series = Object.keys(POOL).map(p => ({name: POOL[p], pts: cumulative(daily.filter(r => r.pool === p).map(r => [r.day, r.net_rs]))})).filter(s => s.pts.length);
@@ -571,9 +580,9 @@ function ratingsTab() {
   if (tl.length) {
     const avg = k => tl.reduce((a, r) => a + (r[k] || 0), 0) / tl.length;
     const auto = tl.filter(r => r.approval === "auto").length;
-    h += card("Who took how long (average a trade)", row("Facts", "", num(avg("facts_s"), 1) + " s") + row("AI deciding", "", num(avg("ai_decide_s") / 60, 1) + " min")
-      + row("Council", "", num(avg("council_s"), 1) + " s") + row("Approval", `${auto} of ${tl.length} automatic`, num(avg("approval_s"), 0) + " s")
-      + row("Placing", "", num(avg("placing_s"), 0) + " s") + row("Fill", "", num(avg("fill_s"), 1) + " s") + row("Holding", "", num(avg("hold_min"), 0) + " min"),
+    h += card("Time per trade, on average", row("Gathering facts", "", num(avg("facts_s"), 1) + " s") + row("AI deciding", "", num(avg("ai_decide_s") / 60, 1) + " min")
+      + row("Council review", "", num(avg("council_s"), 1) + " s") + row("Approval", `${auto} of ${tl.length} approved automatically`, num(avg("approval_s"), 0) + " s")
+      + row("Placing the order", "", num(avg("placing_s"), 0) + " s") + row("Order filled", "", num(avg("fill_s"), 1) + " s") + row("Held for", "", num(avg("hold_min"), 0) + " min"),
       `<span class="lbl">${tl.length} trades</span>`);
   }
   const bs = ds("by_setup");
@@ -586,7 +595,7 @@ const ICON = {stocks: '<path d="M3 17l5-5 4 4 8-8"/><path d="M14 8h6v6"/>', mark
   feed: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14h4"/>',
   explore: '<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5 20 20"/><path d="M7.5 9h5M7.5 11.5h3"/>',
   ratings: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'};
-const TABS = [["stocks", "Stocks"], ["markets", "Markets"], ["feed", "TFeed"], ["explore", "Explore"], ["ratings", "Ratings and Performance"]];
+const TABS = [["stocks", "Stocks"], ["markets", "Markets"], ["feed", "TFeed"], ["explore", "Explore"], ["ratings", "Scorecard"]];
 const svgI = (p, w = 24, sw2 = 1.8) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
 function suggestions() {
   const q = S.q.trim().toUpperCase();
@@ -604,10 +613,11 @@ function header() {
   const dark = document.documentElement.dataset.theme === "dark";
   const upd = S.data ? `Updated ${dm(S.data.updated_at)}, ${hm(S.data.updated_at)}` : "";
   const sub = S.tab === "stocks" ? `<div class="sub" role="group" aria-label="Stocks sections">${[["desk", "Desk"], ["intraday", "Intraday"], ["swing", "Swing"], ["long", "Long"]].map(([k, n]) => `<button data-sub="${k}" aria-pressed="${S.sub === k}">${n}</button>`).join("")}</div>` : "";
-  return `<div class="hrow"><h1>${title}</h1><div class="hrow"><span class="pill" title="${esc(upd)}">Paper money</span>
+  return `<div class="hrow"><div class="brand"><img src="icon.svg" alt=""><div><h1>${title}</h1>${upd ? `<span class="upd">${esc(upd)}</span>` : ""}</div></div>
+    <div class="hrow"><span class="pill"><i></i>Paper money</span>
     <button class="icon" id="theme" aria-label="Switch to ${dark ? "light" : "dark"} theme">${dark  // like the old app: a sun in dark mode, a moon in light
-      ? svgI('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', 20, 2)
-      : svgI('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', 20, 2)}</button></div></div>
+      ? svgI('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', 18, 2)
+      : svgI('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', 18, 2)}</button></div></div>
     ${sub}`;
 }
 function render() {
