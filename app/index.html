@@ -89,7 +89,7 @@ nav.bar button[aria-current=page]{color:var(--accent);box-shadow:inset 0 2px 0 v
 // ---- State and preferences (kept on this phone only) -------------------------------------------------------
 const P = (() => { try { return JSON.parse(localStorage.getItem("upx-prefs") || "{}"); } catch (e) { return {}; } })();
 function save() { try { localStorage.setItem("upx-prefs", JSON.stringify(P)); } catch (e) { /* private mode */ } }
-const S = {tab: P.tab || "stocks", sub: P.sub || "desk", q: "", open: {}, sector: null, index: P.index || "Nifty 50",
+const S = {tab: P.tab || "stocks", sub: P.sub || "desk", q: "", open: {}, sector: null, page: null,
            list: 0, feed: "All", data: null, stocks: null, error: null};
 if (P.theme) document.documentElement.dataset.theme = P.theme;
 
@@ -118,6 +118,17 @@ function poolNow(pool) {  // {balance, prev, start, open, day}
   const last = rows[rows.length - 1], prev = rows.length > 1 ? rows[rows.length - 2] : null;
   return {balance: last.balance, prev: prev ? prev.balance : last.starting_capital, start: last.starting_capital,
           open: last.open_positions || 0, day: last.day};
+}
+const pools = () => (S.data && S.data.pools) || {};
+const charts = () => (S.data && S.data.charts) || [];
+const js = v => { try { return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+const latestEvent = (pool, event) => ds("decisions").find(e => e.pool === pool && e.event === event);
+function todaysRead() {  // one line worked out from the day's prices
+  const eq = ds("eq_day"), sec = sectors();
+  if (!eq.length || !sec.length) return "";
+  const up = eq.filter(r => r.change_pct > 0).length, dn = eq.filter(r => r.change_pct < 0).length;
+  const mood = up > dn * 1.5 ? "Broad rise" : dn > up * 1.5 ? "Broad fall" : "Mixed day";
+  return `${mood}: ${num(up)} up, ${num(dn)} down; best ${esc(sec[0].name)} ${pct(sec[0].chg)}, worst ${esc(sec[sec.length - 1].name)} ${pct(sec[sec.length - 1].chg)} (${dm(sec[0].day)}).`;
 }
 const lastTradeDay = () => latestDay(ds("decisions"), "trade_date");
 const events = (pool, day) => ds("decisions").filter(e => (!pool || e.pool === pool) && (!day || e.trade_date === day));
@@ -197,25 +208,26 @@ const cumulative = rows => { let t = 0; return rows.map(([d, v]) => [d, t += v])
 
 // ---- Stocks › Desk -------------------------------------------------------------------------------------------
 function desk() {
-  const pools = Object.keys(POOL).map(p => [p, poolNow(p)]).filter(x => x[1]);
+  const pools = Object.keys(POOL).map(p => [p, poolNow(p)]).filter(x => x[1]);  // (shadows the pools() helper here)
   if (!pools.length) return card("", note("No trading data yet. It appears after the first trading day."));
   const bal = pools.reduce((t, [, p]) => t + p.balance, 0), prev = pools.reduce((t, [, p]) => t + p.prev, 0);
   const start = pools.reduce((t, [, p]) => t + p.start, 0), day = lastTradeDay();
   const ev = events(null, day), placed = ev.filter(e => e.event === "placed").length, closed = ev.filter(e => e.event === "exit").length;
   const open = pools.reduce((t, [, p]) => t + p.open, 0), skipped = ev.filter(e => e.event === "skipped" || e.event === "not_approved").length;
+  const lost = charts().filter(c => c.skipped && c.would_have === "stop").length;
   let h = hero(`Today's desk · ${dm(pools[0][1].day)}`, rs(bal), bal - prev, prev ? (bal / prev - 1) * 100 : 0,
-               `${placed} placed, ${closed} closed, ${open} open${skipped ? `; ${skipped} skipped` : ""}`);
+               `${placed} placed, ${closed} closed, ${open} open${skipped ? `; ${skipped} skipped, ${lost} of them would have lost` : ""}`);
   // Portfolio vs NIFTYBEES (% since the start)
   const byDay = {}; ds("pool_days").forEach(r => { (byDay[r.day] = byDay[r.day] || {b: 0, s: 0}); byDay[r.day].b += r.balance; byDay[r.day].s += r.starting_capital; });
   const mine = Object.keys(byDay).sort().map(d => [d, (byDay[d].b / byDay[d].s - 1) * 100]);
   const nb = {}; ds("shadow_values").filter(r => r.kind === "benchmark").forEach(r => { (nb[r.day] = nb[r.day] || []).push(r.gain_pct); });
   const bees = Object.keys(nb).sort().map(d => [d, nb[d].reduce((a, b) => a + b, 0) / nb[d].length]);
   h += chart("desk", "Your portfolio vs NIFTYBEES", [{name: "Your portfolio", pts: mine, real: true}, {name: "NIFTYBEES", pts: bees, dash: true}], "%");
-  h += glance();
+  h += glance();  // the market read comes after the P&L chart
   const dec = events(null, day).filter(e => ["review", "pass", "skipped", "not_approved"].includes(e.event)).map(e => {
     const exit = events(null, day).find(x => x.event === "exit" && x.review_id && x.review_id === e.review_id);
     const what = e.event === "pass" ? "passed" : e.event === "review" ? (e.setup || "proposal") : "skipped";
-    const sub = [what, hm(e.at_ist || e.written_at), e.score != null ? "score " + num(e.score) : ""].filter(Boolean).join(", ");
+    const sub = [what, hm(e.at_ist || e.written_at), e.ai_yes_pct != null ? `AI ${num(e.ai_yes_pct)}%` : "", e.council_yes_pct != null ? `council ${num(e.council_yes_pct)}%` : ""].filter(Boolean).join(", ");
     return row(esc(e.symbol), esc(sub), exit ? srs(exit.net_rs) : e.event === "pass" ? esc((e.reason || "").slice(0, 40)) : e.event === "review" ? "open" : "", exit ? cls(exit.net_rs) : "mute");
   });
   if (dec.length) h += card(`Decisions · ${dm(day)}`, topN("dec", dec));
@@ -233,7 +245,7 @@ function glance() {
   if (!items.length) return "";
   const s = sectors(), best = s[0], worst = s[s.length - 1];
   return card("Market at a glance", tiles(items.map(m => tile(esc(m.label), num(m.value, m.value >= 1000 ? 0 : 2), m.change == null ? "no change" : pct(m.change_pct), cls(m.change))))
-    + (best ? note(`Best sector ${esc(best.name)} ${pct(best.chg)}; worst ${esc(worst.name)} ${pct(worst.chg)} (${dm(best.day)}).`) : ""));
+    + (best ? note(todaysRead()) : ""));
 }
 
 // ---- Stocks › Intraday ---------------------------------------------------------------------------------------
@@ -249,15 +261,67 @@ function intraday() {
                             tile("Average a trade", srs(t.reduce((a, r) => a + r.net_rs, 0) / t.length), "last 90 days", cls(wins + losses)),
                             tile("Profit factor", losses ? num(wins / -losses, 2) : "–", "won ÷ lost", wins + losses >= 0 ? "up" : "dn")], 3, true);
   h += realVsShadows("intraday");
+  const brief = ds("feed").find(r => KIND(r.text || "") === "Briefs");
+  if (brief) h += card("Market this morning", `<p class="note" style="white-space:pre-wrap">${esc(brief.text)}</p>`, `<span class="lbl">${dm(brief.sent_at)}, ${hm(String(brief.sent_at).replace(" ", "T"))}</span>`);
   const exits = ev.filter(e => e.event === "exit").map(e => {
     const tl = ds("timeline").find(x => x.review_id === e.review_id);
     const sub = tl ? `facts ${num(tl.facts_s)} s, AI ${num(tl.ai_decide_s / 60, 1)} min, council ${num(tl.council_s)} s, ${esc(tl.approval || "")} ${num(tl.approval_s)} s, held ${num(tl.hold_min)} min` : esc(e.reason || "");
-    return row(`${esc(e.symbol)} ${link(e.symbol)}`, sub, srs(e.net_rs), cls(e.net_rs));
+    const c = charts().find(x => x.review_id === e.review_id);
+    return row(`${esc(e.symbol)} ${link(e.symbol)}`, sub, srs(e.net_rs), cls(e.net_rs)) + (c ? candleChart(c, e) : "");
   });
+  const ideas = charts().filter(c => c.skipped).map(c => row(`${esc(c.symbol)} ${link(c.symbol)}`, `skipped at ${c.at}; entry ${rs(c.entry, 2)}, stop ${rs(c.stop, 2)}, target ${rs(c.target, 2)}`,
+    c.would_have === "stop" ? "would have lost" : c.would_have === "target" ? "would have won" : "neither hit", c.would_have === "stop" ? "up" : c.would_have === "target" ? "dn" : "mute"));
   const passes = ev.filter(e => e.event === "pass").map(e => row(esc(e.symbol), "passed", esc((e.reason || "").slice(0, 48)), "mute"));
-  if (exits.length || passes.length) h += card(`Today's trades · ${dm(day)}`, topN("itr", exits.concat(passes)));
-  h += rulesCompared();
+  if (exits.length || passes.length || ideas.length) h += card(`Today's trades · ${dm(day)}`, topN("itr", exits.concat(ideas, passes)));
+  h += intradayPlan(day) + rulesCompared() + councilTest() + autoBar();
   return h + star();
+}
+function candleChart(c, exit) {  // 5-minute bars with entry, stop, target and exit lines; ‹ Candles › or Line
+  const [s, kind] = sw("candles", ["Candles", "Line"]), b = c.candles;
+  if (!b.length) return "";
+  const lo = Math.min(c.stop, c.target, ...b.map(x => x[1])), hi = Math.max(c.stop, c.target, ...b.map(x => x[2]));
+  const W = 340, H = 130, y = v => H - 6 - (v - lo) * (H - 12) / (hi - lo || 1), x = i => 4 + i * (W - 8) / Math.max(1, b.length - 1);
+  let g = "";
+  if (kind === "Candles") b.forEach((k, i) => { const o = k[3] != null ? k[3] : k[1], cl = k[4] != null ? k[4] : k[2], col = cl >= o ? "var(--up)" : "var(--dn)";
+    g += `<line x1="${x(i)}" x2="${x(i)}" y1="${y(k[2])}" y2="${y(k[1])}" stroke="${col}"/><rect x="${x(i) - 1.5}" y="${y(Math.max(o, cl))}" width="3" height="${Math.max(1, Math.abs(y(o) - y(cl)))}" fill="${col}"/>`; });
+  else g += `<polyline points="${b.map((k, i) => `${x(i)},${y(k[4] != null ? k[4] : (k[1] + k[2]) / 2)}`).join(" ")}" fill="none" stroke="var(--fg)" stroke-width="1.4"/>`;
+  const line = (v, col, name, left) => `<line x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-dasharray="4 3"/><text x="${left ? 4 : W - 4}" y="${y(v) - 3}" text-anchor="${left ? "start" : "end"}" font-size="9" fill="${col}">${name} ${num(v, 2)}</text>`;
+  g += line(c.entry, "var(--mute)", "entry", true) + line(c.stop, "var(--dn)", "stop") + line(c.target, "var(--up)", "target");
+  if (exit && exit.price) g += line(exit.price, "var(--accent)", "exit", true);
+  return `<div style="display:flex;justify-content:flex-end">${s}</div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:130px;background:var(--tile);border-radius:8px" role="img" aria-label="${esc(c.symbol)} 5-minute chart with entry, stop and target">${g}</svg>`;
+}
+function intradayPlan(day) {
+  const lim = (pools().intraday || {}).limits || {}, scr = ds("decisions").find(e => e.pool === "intraday" && e.event === "screen" && e.trade_date === day);
+  const top = js(scr && scr.top) || [];
+  if (!Object.keys(lim).length && !top.length) return "";
+  const rows = [lim.risk_pct != null ? row("Risk a trade", lim.vix_scaled ? "scaled by India VIX" : "", num(lim.risk_pct, 1) + "% of the pool") : "",
+    lim.entry_window ? row("New entries", "", esc(lim.entry_window)) : "",
+    lim.max_open != null ? row("Most open at once", "", num(lim.max_open)) : "",
+    lim.min_rr != null ? row("Reward at least", "", num(lim.min_rr, 1) + " × the risk") : "",
+    top.length ? note(`Stocks in play at ${hm(scr.at_ist || scr.written_at)}: ${esc(top.slice(0, 8).join(", "))}.`) : ""].join("");
+  return card(`Intraday plan · ${dm(day)}`, rows);
+}
+function councilTest() {
+  const c = ds("council").filter(r => r.net_rs != null);
+  if (!c.length) return "";
+  const won = r => r.net_rs > 0 ? 1 : 0, right = k => c.filter(r => r[k] != null && (r[k] >= 50) === (won(r) === 1)).length;
+  const brier = k => { const x = c.filter(r => r[k] != null); return x.length ? x.reduce((a, r) => a + (r[k] / 100 - won(r)) ** 2, 0) / x.length : null; };
+  const follow = k => c.filter(r => r[k] != null && r[k] >= 50).reduce((a, r) => a + r.net_rs, 0);
+  const dis = c.filter(r => r.ai_yes_pct != null && r.council_yes_pct != null && (r.ai_yes_pct >= 50) !== (r.council_yes_pct >= 50));
+  return card("Council test (paper)", row("Council", `${c.length} judged, right ${pct(right("council_yes_pct") / c.length * 100, 0).replace("+", "")}, Brier ${num(brier("council_yes_pct"), 2)}`, srs(follow("council_yes_pct")), cls(follow("council_yes_pct")))
+    + row("AI alone", `right ${pct(right("ai_yes_pct") / c.length * 100, 0).replace("+", "")}, Brier ${num(brier("ai_yes_pct"), 2)}`, srs(follow("ai_yes_pct")), cls(follow("ai_yes_pct")))
+    + (dis.length ? note(`They disagreed on ${dis.length}: the council's side made ${srs(dis.filter(r => r.council_yes_pct >= 50).reduce((a, r) => a + r.net_rs, 0))}.`) : ""),
+    `<span class="lbl">last 90 days</span>`);
+}
+function autoBar() {
+  const p = pools().intraday;
+  if (!p) return "";
+  const l = p.limits || {};
+  return card("Auto bar and sizing", row("Auto mode", p.auto ? "the AI places its own trades" : "each trade waits for your YES", p.auto ? "ON" : "OFF", p.auto ? "up" : "mute")
+    + (l.max_position_pct != null ? row("Largest position", "", num(l.max_position_pct) + "% of the pool") : "")
+    + (l.max_trades_day != null ? row("Trades a day", "", "up to " + num(l.max_trades_day)) : "")
+    + (l.daily_limit_r != null ? row("Stop for the day after", "", num(l.daily_limit_r) + " × the risk lost") : "")
+    + (l.cooloff_after != null ? row("Pause", `after ${num(l.cooloff_after)} losses in a row`, num(l.cooloff_min) + " min") : ""));
 }
 function realVsShadows(pool) {
   const [segH, show] = seg("rvs:" + pool, ["Real", "Shadows", "Both"]);
@@ -294,7 +358,8 @@ function holdPool(pool) {
   const p = poolNow(pool);
   if (!p) return card("", note(`No ${POOL[pool].toLowerCase()} data yet.`));
   const day = lastTradeDay(), ev = events(pool, day);
-  let h = hero(`${POOL[pool]} pool · ${dm(p.day)}`, rs(p.balance), p.balance - p.prev, (p.balance / p.prev - 1) * 100,
+  const ps = pools()[pool];
+  let h = hero(`${POOL[pool]} pool · ${dm(p.day)}${ps ? ` · Auto ${ps.auto ? "ON" : "OFF"}` : ""}`, rs(p.balance), p.balance - p.prev, (p.balance / p.prev - 1) * 100,
                `${p.open} holding, ${ev.filter(e => e.event === "fill" || e.event === "placed").length} bought, ${ev.filter(e => e.event === "exit").length} sold`);
   const kind = pool === "swing" ? "swing" : "long-term", latest = latestDay(ds("shadow_values"));
   const shTrades = ds("shadow_values").filter(r => r.kind === kind && r.day === latest).reduce((a, r) => a + (r.closed_trades || 0), 0);
@@ -302,9 +367,33 @@ function holdPool(pool) {
               tile("Trades", `${ds("trades").filter(r => r.pool === pool).length} / ${shTrades}`, "real / shadows"),
               tile("Open", String(p.open), "positions")], 3, true);
   h += realVsShadows(pool);
+  const read = todaysRead();
+  if (read) h += note("Today's read: " + read.replace(/^./, c => c.toLowerCase()));
   const tr = ev.filter(e => ["placed", "fill", "exit"].includes(e.event)).map(e => row(`${e.event === "exit" ? "SELL" : "BUY"} ${esc(e.symbol)} ${link(e.symbol)}`,
     `${num(e.qty)} at ${rs(e.price, 2)}`, e.event === "exit" ? srs(e.net_rs) : rs((e.qty || 0) * (e.price || 0)), e.event === "exit" ? cls(e.net_rs) : ""));
   if (tr.length) h += card(`Today's trades · ${dm(day)}`, topN("tr" + pool, tr));
+  const held = (ps && ps.positions) || [];
+  if (held.length) {
+    const [hs, hm2] = sw("hold" + pool, ["Current", "Returns"]);
+    h += card("Holdings now", topN("hold" + pool, held.map(x => {
+      const val = (x.now || x.avg) * x.qty, cost = x.avg * x.qty, days = x.since ? Math.round((new Date(p.day) - new Date(x.since)) / 864e5) : null;
+      return row(`${esc(x.symbol)} ${link(x.symbol)}`, `${num(x.qty)} @ ${rs(x.avg, 2)}${x.now ? `, now ${rs(x.now, 2)}` : ""}${days != null ? `, day ${days + 1}` : ""}`,
+        hm2 === "Current" ? `${rs(val)} (${rs(cost)})` : pct((val / cost - 1) * 100), cls(val - cost));
+    })), hs);
+  }
+  const dec = latestEvent(pool, "decision");
+  if (dec) {
+    const buys = ((js(dec.final) || {}).buys) || [], cands = js(dec.candidates) || [];
+    const rowsB = buys.map(b => row(`${esc(b.symbol)} ${link(b.symbol)}`, `stop ${rs(b.stop, 2)}, target ${rs(b.target, 2)}${b.why ? "; " + esc(b.why) : ""}`, "Buy", "up"));
+    const rowsC = cands.filter(c => !buys.some(b => b.symbol === c.symbol)).map((c, i) => row(`${i + 1}. ${esc(c.symbol)} ${link(c.symbol)}`,
+      pool === "swing" ? `1 month ${pct(c.ret_1m_pct, 1)}, 3 months ${pct(c.ret_3m_pct, 1)}` : `ROCE ${num(c.roce_pct, 1)}%, ROE ${num(c.roe_pct, 1)}%, P/E ${num(c.pe, 1)} vs sector ${num(c.sector_pe, 1)}`,
+      c.close ? rs(c.close, 2) : ""));
+    if (rowsB.length || rowsC.length) h += card(`Suggested · ${dm(dec.trade_date)}`, topN("sug" + pool, rowsB.concat(rowsC)));
+  }
+  const news = new Set(ds("filings").map(f => f.symbol));
+  const brk = ds("eq_day").filter(r => news.has(r.symbol) && r.change_pct >= 3).sort((a, b) => b.change_pct - a.change_pct);
+  if (brk.length) h += card("News breakouts", topN("news" + pool, brk.map(r => { const f = ds("filings").find(x => x.symbol === r.symbol);
+    return row(`${esc(r.symbol)} ${link(r.symbol)}`, `${esc((f.what || "").slice(0, 60))}; ${num(r.volume)} shares`, pct(r.change_pct), "up"); })));
   const [s, mode] = sw("score" + pool, ["Current", "Returns", "vs NIFTYBEES"]);
   const benchId = pool === "swing" ? "B01" : "B02";  // each pool's own NIFTYBEES benchmark
   const rows = ds("shadow_values").filter(r => r.day === latest && (r.kind === kind || r.shadow === benchId)).sort((a, b) => b.gain_pct - a.gain_pct);
@@ -327,13 +416,23 @@ function marketsTab() {
   const m = k => market(k), t = (k, d = 2, money) => { const x = m(k); return x ? tile(esc(x.label) + (x.unit ? ` · ${esc(x.unit.replace(/^₹ \/ /, "").replace(/^\$ per share, /, ""))}` : ""), (money ? (k === "acn" ? "$" : "₹") : "") + num(x.value, x.value >= 1000 ? 0 : d), x.change == null ? "no change" : `${k === "acn" ? "" : ""}${pct(x.change_pct)}`, x.change == null ? "mute" : cls(x.change)) : ""; };
   const eq = ds("eq_day"), up = eq.filter(r => r.change_pct > 0).length, dn = eq.filter(r => r.change_pct < 0).length;
   let h = card("India", tiles([t("nifty50"), t("sensex"), t("vix"), eq.length ? tile("Breadth (all NSE)", `${num(up)}↑ ${num(dn)}↓`, up >= dn ? "more up" : "more down", up >= dn ? "up" : "dn") : ""].filter(Boolean), 2), m("nifty50") ? `<span class="lbl">${dm(m("nifty50").as_of)}</span>` : "");
+  const read = todaysRead();
+  if (read) h += card("Today's read", note(read));
   const sec = sectors();
   if (sec.length) {
     const [s, mode] = sw("secview", ["Grid", "List"]);
-    const open = sec.find(x => x.name === S.sector);
-    const body = mode === "Grid" ? `<div class="sec">${sec.map(x => `<button data-sector="${esc(x.name)}" aria-pressed="${S.sector === x.name}"><span style="font-size:12px">${esc(x.name)}</span><b class="${cls(x.chg)}">${pct(x.chg)}</b></button>`).join("")}</div>`
-      : sec.map(x => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>`).join("");
-    const list = open ? `<div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px"><span class="lbl">${esc(open.name)}, ${open.rows.length} stocks</span>${topN("sec:" + open.name, open.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => row(`${esc(r.symbol)} ${link(r.symbol)}`, rs(r.close, 2), pct(r.change_pct), cls(r.change_pct))))}</div>` : "";
+    const listOf = (x, label) => `<div style="grid-column:1/-1;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:8px 0;display:flex;flex-direction:column;gap:4px">${label ? `<span class="lbl">${esc(x.name)}, ${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span>` : ""}${topN("sec:" + x.name, x.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => row(`${esc(r.symbol)} ${link(r.symbol)}`, rs(r.close, 2), pct(r.change_pct), cls(r.change_pct))))}</div>`;
+    const SHORT = {"Telecommunication": "Telecom", "Information Technology": "IT", "Oil Gas & Consumable Fuels": "Oil & Gas",
+      "Fast Moving Consumer Goods": "FMCG", "Automobile and Auto Components": "Auto", "Media Entertainment & Publication": "Media",
+      "Construction Materials": "Cement etc.", "Consumer Durables": "Durables"};  // grid tiles are narrow; the list view keeps full names
+    const at = sec.findIndex(x => x.name === S.sector);
+    let body;
+    if (mode === "Grid") {  // the list goes after the row of three that holds the tapped sector
+      const cells = sec.map(x => `<button data-sector="${esc(x.name)}" aria-pressed="${S.sector === x.name}" aria-expanded="${S.sector === x.name}"><span style="font-size:12px;overflow-wrap:anywhere">${esc(SHORT[x.name] || x.name)}</span><b class="${cls(x.chg)}">${pct(x.chg)}</b></button>`);
+      if (at >= 0) cells.splice(Math.min(sec.length, Math.floor(at / 3) * 3 + 3), 0, listOf(sec[at], true));
+      body = `<div class="sec">${cells.join("")}</div>`;
+    } else body = sec.map((x, i) => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}" aria-expanded="${i === at}"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>` + (i === at ? listOf(x) : "")).join("");
+    const list = "";
     h += card(`Sectors at the close · ${dm(sec[0].day)}`, body + list, s);
   }
   const g = [t("gold999", 0, true), t("silver999", 0, true)].filter(Boolean);
@@ -364,37 +463,56 @@ function searchBox() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--mute)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     <input id="q" type="search" placeholder="Search stocks" autocomplete="off" value="${esc(S.q)}" style="background:var(--card)"><div id="sugg">${suggestions()}</div></div>`;
 }
+const INDEX_PAGES = {  // indices in search; slugs checked against upstox.com/indices on 28 Nov
+  "Nifty 50": "nifty-50", "Sensex": "sensex", "Nifty Next 50": "nifty-next-50", "Bank Nifty": "nifty-bank",
+  "Nifty 100": "nifty-100", "Nifty 200": "nifty-200", "Nifty 500": "nifty-500", "Fin Nifty": "nifty-fin-service",
+  "Nifty Midcap 50": "nifty-midcap-50", "Nifty Smallcap 50": "nifty-smlcap-50", "India VIX": "india-vix",
+  "BSE 100": "bse100", "BSE 200": "bse200", "BSE 500": "bse500", "BSE Midcap": "midcap", "BSE Smallcap": "smlcap"};
+const indexLink = n => `https://upstox.com/indices/${INDEX_PAGES[n]}-share-price/`;
+function exploreLists() {  // name -> rows, for Today's lists
+  const eq = new Map(ds("eq_day").map(r => [r.symbol, r])), all = ds("eq_day").filter(r => stockOf(r.symbol));
+  const srow = (sym, sub) => { const e = eq.get(sym), st = stockOf(sym); return row(`${esc(sym)} ${link(sym)}`, sub != null ? sub : esc(st ? st.n : ""), e ? pct(e.change_pct) : "", e ? cls(e.change_pct) : ""); };
+  return {srow, lists: {
+    "Top gainers": () => all.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol, rs(r.close, 2))),
+    "Top losers": () => all.slice().sort((a, b) => a.change_pct - b.change_pct).map(r => srow(r.symbol, rs(r.close, 2))),
+    "Most active (volume)": () => all.slice().sort((a, b) => b.volume - a.volume).map(r => srow(r.symbol, num(r.volume) + " shares")),
+    "Most active (value)": () => all.slice().sort((a, b) => b.turnover_cr - a.turnover_cr).map(r => srow(r.symbol, rs(r.turnover_cr, 0) + " cr")),
+    "Highest delivery %": () => all.filter(r => r.deliv_pct != null && r.volume > 1e5).sort((a, b) => b.deliv_pct - a.deliv_pct).map(r => srow(r.symbol, num(r.deliv_pct, 1) + "% delivered")),
+    "52-week highs": () => all.filter(r => r.hi52 && r.close >= r.hi52 * 0.999).map(r => srow(r.symbol, "at " + rs(r.close, 2))),
+    "52-week lows": () => all.filter(r => r.lo52 && r.close <= r.lo52 * 1.001).map(r => srow(r.symbol, "at " + rs(r.close, 2))),
+    "Bulk and block deals": () => ds("deals").map(d => row(`${esc(d.symbol)} ${link(d.symbol)}`, `${esc(d.kind)}, ${esc(d.client)}, ${dm(d.day)}`, `${esc(d.side)} ${rs(d.value_cr, 1)} cr`)),
+    "In the news": () => ds("filings").map(f => row(`${esc(f.symbol)} ${link(f.symbol)}`, `${esc((f.what || "").slice(0, 60))}, ${dm(f.filed_at)}`, f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">Filing ↗</a>` : "")),
+    "From our pools": () => [...new Set(ds("decisions").map(e => e.symbol).filter(Boolean))].map(sym => { const e = ds("decisions").find(x => x.symbol === sym);
+      return srow(sym, `${POOL[e.pool] || e.pool}, ${({exit: "sold", pass: "passed", fill: "bought", placed: "placed", review: "proposed", skipped: "skipped", not_approved: "not approved"})[e.event] || e.event}, ${dm(e.trade_date)}`); }),
+    "F&O stocks": () => S.stocks.stocks.filter(x => x.lot).map(x => srow(x.s, `${esc(x.n)}, lot ${num(x.lot)}`))}};
+}
+const openBtn = (kind, name, sub, right, c) => `<button class="row" data-open="${kind}" data-name="${esc(name)}" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer"><span class="n"><b style="font-weight:600">${esc(name)}</b>${sub ? `<span>${sub}</span>` : ""}</span><span class="r ${c || "mute"}">${right || "›"}</span></button>`;
+function explorePage() {  // one selected index, sector or list on its own page
+  const {kind, name} = S.page, {srow, lists} = exploreLists(), eq = new Map(ds("eq_day").map(r => [r.symbol, r]));
+  let rows = [], extra = "";
+  if (kind === "index") {
+    rows = ((S.stocks.indices || {})[name] || []).slice().sort((a, b) => ((eq.get(b) || {}).change_pct || 0) - ((eq.get(a) || {}).change_pct || 0)).map(x => srow(x));
+    if (INDEX_PAGES[name]) extra = `<a href="${indexLink(name)}" target="_blank" rel="noopener">${esc(name)} on Upstox ↗</a>`;
+  } else if (kind === "sector") {
+    const sec = sectors().find(x => x.name === name);
+    rows = sec ? sec.rows.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol)) : [];
+  } else rows = lists[name] ? lists[name]() : [];
+  const back = `<button class="more" data-back="1" style="font-size:14px">‹ Explore</button>`;
+  return back + card(esc(name), (extra ? `<span>${extra}</span>` : "") + (rows.length ? rows.join("") : note("Nothing here today.")), `<span class="lbl">${rows.length}</span>`);
+}
 function exploreTab() {
   if (!S.stocks) return card("", note("The stock list hasn't loaded yet."));
-  const eq = new Map(ds("eq_day").map(r => [r.symbol, r]));
-  const srow = (sym, sub) => { const e = eq.get(sym), s = stockOf(sym); return row(`${esc(sym)} ${link(sym)}`, sub != null ? sub : esc(s ? s.n : ""), e ? pct(e.change_pct) : "", e ? cls(e.change_pct) : ""); };
+  if (S.page) return explorePage();
   let h = searchBox();
   const recent = P.recent || [];
-  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(s => { const x = stockOf(s); return x ? `<a class="chip" href="${esc(x.u)}" target="_blank" rel="noopener" data-viewed="${esc(s)}">${esc(s)}</a>` : ""; }).join("")}</div>`);
+  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(x => { const st = stockOf(x); return st ? `<a class="chip" href="${esc(st.u)}" target="_blank" rel="noopener" data-viewed="${esc(x)}">${esc(x)}</a>` : ""; }).join("")}</div>`);
   const ix = S.stocks.indices || {}, names = Object.keys(ix);
-  if (names.length) {
-    const on = names.includes(S.index) ? S.index : names[0];
-    const members = (ix[on] || []).slice().sort((a, b) => ((eq.get(b) || {}).change_pct || 0) - ((eq.get(a) || {}).change_pct || 0));
-    h += card("By index", `<div class="chips">${names.map(n => `<button class="chip" data-index="${esc(n)}" aria-pressed="${n === on}">${esc(n)}</button>`).join("")}</div>` + topN("ix:" + on, members.map(s => srow(s))), `<span class="lbl">${esc(on)}, ${members.length}</span>`);
-  }
+  if (names.length) h += card("By index", `<div class="chips">${names.map(n => `<button class="chip" data-open="index" data-name="${esc(n)}">${esc(n)} <span class="mute">${ix[n].length}</span></button>`).join("")}</div>`);
   const sec = sectors();
-  if (sec.length) h += card("By sector", topN("bysec", sec.map(x => `<button class="row" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;border-top:1px solid var(--soft);padding:8px 0 0;text-align:left;cursor:pointer" data-sector="${esc(x.name)}" data-goto="markets"><span class="n"><b style="font-weight:600">${esc(x.name)}</b><span>${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}</span></span><span class="r ${cls(x.chg)}">${pct(x.chg)}</span></button>`)));
-  const all = ds("eq_day").filter(r => stockOf(r.symbol));
-  const LISTS = [["Top gainers", () => all.slice().sort((a, b) => b.change_pct - a.change_pct).map(r => srow(r.symbol, rs(r.close, 2)))],
-    ["Top losers", () => all.slice().sort((a, b) => a.change_pct - b.change_pct).map(r => srow(r.symbol, rs(r.close, 2)))],
-    ["Most active (volume)", () => all.slice().sort((a, b) => b.volume - a.volume).map(r => srow(r.symbol, num(r.volume) + " shares"))],
-    ["Most active (value)", () => all.slice().sort((a, b) => b.turnover_cr - a.turnover_cr).map(r => srow(r.symbol, rs(r.turnover_cr, 0) + " cr"))],
-    ["Highest delivery %", () => all.filter(r => r.deliv_pct != null && r.volume > 1e5).sort((a, b) => b.deliv_pct - a.deliv_pct).map(r => srow(r.symbol, num(r.deliv_pct, 1) + "% delivered"))],
-    ["52-week highs", () => all.filter(r => r.hi52 && r.close >= r.hi52 * 0.999).map(r => srow(r.symbol, "at " + rs(r.close, 2)))],
-    ["52-week lows", () => all.filter(r => r.lo52 && r.close <= r.lo52 * 1.001).map(r => srow(r.symbol, "at " + rs(r.close, 2)))],
-    ["Bulk and block deals", () => ds("deals").map(d => row(`${esc(d.symbol)} ${link(d.symbol)}`, `${esc(d.kind)}, ${esc(d.client)}, ${dm(d.day)}`, `${esc(d.side)} ${rs(d.value_cr, 1)} cr`))],
-    ["In the news", () => ds("filings").map(f => row(`${esc(f.symbol)} ${link(f.symbol)}`, `${esc((f.what || "").slice(0, 60))}, ${dm(f.filed_at)}`, f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">Filing ↗</a>` : ""))]];
-  const [ls, which] = sw("lists", LISTS.map(l => l[0])), rows = LISTS.find(l => l[0] === which)[1]();
-  h += card("Today's lists", rows.length ? topN("list:" + which, rows) : note("Nothing on this list today."), ls);
-  const ours = [...new Set(ds("decisions").map(e => e.symbol).filter(Boolean))];
-  if (ours.length) h += card("From our pools", topN("ours", ours.map(s => { const e = ds("decisions").find(x => x.symbol === s); return srow(s, `${POOL[e.pool] || e.pool}, ${({exit: "sold", pass: "passed", fill: "bought", placed: "placed", review: "proposed", skipped: "skipped", not_approved: "not approved"})[e.event] || e.event}, ${dm(e.trade_date)}`); })));
-  const fo = S.stocks.stocks.filter(s => s.lot);
-  if (fo.length) h += card("F&O stocks", topN("fo", fo.map(s => srow(s.s, `${esc(s.n)}, lot ${num(s.lot)}`))), `<span class="lbl">${fo.length}</span>`);
+  if (sec.length) h += card("By sector", topN("bysec", sec.map(x => openBtn("sector", x.name, `${x.rows.length} stock${x.rows.length === 1 ? "" : "s"}`, pct(x.chg), cls(x.chg)))));
+  const {lists} = exploreLists();
+  h += card("Today's lists", Object.keys(lists).filter(n => n !== "From our pools" && n !== "F&O stocks").map(n => openBtn("list", n)).join(""));
+  h += card("More lists", ["From our pools", "F&O stocks"].map(n => openBtn("list", n)).join(""));
   return h;
 }
 
@@ -436,8 +554,13 @@ const svgI = (p, w = 24, sw2 = 1.8) => `<svg width="${w}" height="${w}" viewBox=
 function suggestions() {
   const q = S.q.trim().toUpperCase();
   if (!q || !S.stocks) return "";
+  const idx = Object.keys(INDEX_PAGES).filter(n => n.toUpperCase().includes(q)).map(n => {
+    const m = market(n === "Nifty 50" ? "nifty50" : n === "Sensex" ? "sensex" : n === "India VIX" ? "vix" : "");
+    const has = ((S.stocks.indices || {})[n] || []).length, sub = `Index${has ? `, ${has} stocks` : ""}${m ? `, ${num(m.value, m.value >= 1000 ? 0 : 2)} (${pct(m.change_pct)})` : ""}`;
+    return `<div class="row" style="padding:8px 12px">${has ? `<button data-open="index" data-name="${esc(n)}" class="n" style="background:none;border:0;padding:0;text-align:left;cursor:pointer;color:var(--fg)">` : `<span class="n">`}<b style="font-weight:600">${esc(n)}</b><span>${sub}</span>${has ? "</button>" : "</span>"}<a class="r" href="${indexLink(n)}" target="_blank" rel="noopener" style="font-size:13px">Upstox ↗</a></div>`;
+  }).join("");
   const hits = S.stocks.stocks.filter(s => s.s.startsWith(q)).concat(S.stocks.stocks.filter(s => !s.s.startsWith(q) && s.n.toUpperCase().includes(q))).slice(0, 8);
-  return `<div class="sugg" role="listbox" aria-label="Matching stocks">${hits.length ? hits.map(s => `<a href="${esc(s.u)}" target="_blank" rel="noopener" data-viewed="${esc(s.s)}" class="row" style="padding:8px 12px;color:var(--fg)"><span class="n"><b style="font-weight:600">${esc(s.s)}</b><span>${esc(s.n)}</span></span><span class="r" style="color:var(--accent);font-size:13px">Upstox ↗</span></a>`).join("") : `<p class="note" style="padding:12px">No stock matches “${esc(S.q)}”.</p>`}</div>`;
+  return `<div class="sugg" role="listbox" aria-label="Matching stocks and indices">${idx}${hits.length || idx ? hits.map(s => `<a href="${esc(s.u)}" target="_blank" rel="noopener" data-viewed="${esc(s.s)}" class="row" style="padding:8px 12px;color:var(--fg)"><span class="n"><b style="font-weight:600">${esc(s.s)}</b><span>${esc(s.n)}</span></span><span class="r" style="color:var(--accent);font-size:13px">Upstox ↗</span></a>`).join("") : `<p class="note" style="padding:12px">No stock or index matches “${esc(S.q)}”.</p>`}</div>`;
 }
 function header() {
   const title = S.tab === "stocks" ? "Stocks" : TABS.find(t => t[0] === S.tab)[1];
@@ -472,14 +595,15 @@ document.addEventListener("click", e => {
   if (d.viewed) { P.recent = [d.viewed].concat((P.recent || []).filter(s => s !== d.viewed)).slice(0, 10); save(); return; }
   if (t.tagName === "A") return;
   if (t.id === "theme") { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; P.theme = dark ? "dark" : "light"; save(); return render(); }
-  if (d.tab) { S.tab = P.tab = d.tab; S.q = ""; save(); window.scrollTo(0, 0); return render(); }
+  if (d.tab) { S.tab = P.tab = d.tab; S.q = ""; S.page = null; save(); window.scrollTo(0, 0); return render(); }
   if (d.sub) { S.sub = P.sub = d.sub; save(); return render(); }
   if (d.sw) { P.sw = P.sw || {}; P.sw[d.sw] = ((P.sw[d.sw] || 0) + 1) % +d.n; save(); return render(); }
   if (d.seg) { P.seg = P.seg || {}; P.seg[d.seg] = d.v; save(); return render(); }
   if (d.more) { S.open[d.more] = !S.open[d.more]; return render(); }
   if (d.hl) { P.hl = P.hl || {}; P.hl[d.hl] = P.hl[d.hl] === d.name ? null : d.name; S.open["lg:" + d.hl] = true; save(); return render(); }
-  if (d.sector) { S.sector = S.sector === d.sector ? null : d.sector; if (d.goto) { S.tab = P.tab = d.goto; save(); } return render(); }
-  if (d.index) { S.index = P.index = d.index; save(); return render(); }
+  if (d.sector) { S.sector = S.sector === d.sector ? null : d.sector; return render(); }
+  if (d.open) { S.page = {kind: d.open, name: d.name}; S.q = ""; window.scrollTo(0, 0); return render(); }
+  if (d.back) { S.page = null; return render(); }
   if (d.feed) { S.feed = d.feed; return render(); }
 });
 document.addEventListener("toggle", e => { if (e.target.dataset && e.target.dataset.lgd) S.open["lg:" + e.target.dataset.lgd] = e.target.open; }, true);

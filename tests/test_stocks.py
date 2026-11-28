@@ -59,6 +59,12 @@ class ListTest(unittest.TestCase):
         self.assertEqual(out["M&M"]["n"], "Mahindra & Mahindra Ltd")  # not in an index: the instrument name, title-cased
         self.assertNotIn("lot", out["M&M"])
 
+    def test_sensex_members_taken_from_the_nse_lists(self):
+        lists = {"Nifty 50": stocks.parse_index_csv(CSV)}
+        out = stocks.sensex(lists, members=("SBIN", "NOTLISTED"))
+        self.assertEqual([r["symbol"] for r in out], ["SBIN"])  # a member missing from the NSE lists is left out
+        self.assertEqual(len(stocks.SENSEX), 30)
+
     def test_fo_lots_from_the_instrument_file(self):
         rows = [{"segment": "NSE_FO", "instrument_type": "FUT", "underlying_symbol": "SBIN", "lot_size": 750, "expiry": 2},
                 {"segment": "NSE_FO", "instrument_type": "FUT", "underlying_symbol": "SBIN", "lot_size": 700, "expiry": 1},
