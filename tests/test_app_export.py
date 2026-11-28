@@ -59,7 +59,8 @@ class BuildTest(unittest.TestCase):
         raise OSError("offline")
 
     def run_once(self, day):
-        return export.build(day, self.app, query=lambda text: [{"ok": 1}], fetch=self.fetch,
+        return export.build(day, self.app, query=lambda text: [{"ok": 1}], fetch=self.fetch, trader=self.app,
+                            candles=lambda s, d: [],
                             market_values=lambda: ({"petrol": {"value": 111.21, "as_of": day.isoformat(), "source": "Upstox"}}, ["cng"]))
 
     def test_writes_the_data_file_the_stock_list_and_the_market_book(self):

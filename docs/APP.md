@@ -54,9 +54,22 @@ Explore, and Ratings and Performance, in the order of the approved layout. The p
 tab, every ‹ › switch and the chart choices; it also keeps the last data it loaded, so the app opens offline with
 a note saying which copy it shows.
 
-A card whose data does not exist yet stays hidden (no empty boxes). Still waiting for data (B1b-2): Market this
-morning, Today's read, the Intraday plan, per-trade candle charts, Council test detail, the Auto bar ladder,
-Swing/Long holdings, Suggested today, News breakouts, and how many skipped trades would have lost.
+A card whose data does not exist yet stays hidden (no empty boxes). Where the cards get their data:
+
+| Card | From |
+|---|---|
+| Market this morning | The latest brief message in the Telegram feed |
+| Today's read | One line worked out from the day's NSE prices (breadth, best and worst sector) |
+| Intraday plan, Auto bar and sizing | The code limits (`trader/risk.py`) and auto mode, read from the trader's saved state; the 09:25 screen list from the journal |
+| Per-trade candle charts | The export fetches each reviewed stock's 5-minute candles for that day from Upstox |
+| Skipped ideas | The same candles: whether the stop or the target came first after the review |
+| Council test | Each review's council and AI YES % against the trade's result (`council.sql`) |
+| Holdings now | The pools' saved state, with today's close |
+| Suggested | The pool's last decision: its ranked candidates and chosen buys |
+| News breakouts | Stocks with an NSE filing that rose 3% or more |
+
+The Auto bar card shows today's limits only: there is no record of past limit changes yet (a "ladder" of versions
+needs each change logged, which can start at a review).
 
 A test (`tests/test_app_export.py`) checks that every dataset the page reads has a query file, and that every
 market value it shows is fetched.
