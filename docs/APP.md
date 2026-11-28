@@ -56,7 +56,7 @@ than 15% away from the last good one is treated as a misread page and ignored.
 ## The page
 
 One file, `app/index.html`, with no libraries. Tabs: Stocks (Desk, Intraday, Swing, Long), Markets, TFeed,
-Explore, and Ratings and Performance, in the order of the approved layout. The phone remembers the theme, the
+Explore, and Scorecard (your ratings and performance), in the order of the approved layout. The phone remembers the theme, the
 tab, every ‹ › switch and the chart choices; it also keeps the last data it loaded, so the app opens offline with
 a note saying which copy it shows.
 
