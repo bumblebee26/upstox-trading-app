@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Paper trader</title>
+<title>Paper Trader</title>
+<script>try { const t = JSON.parse(localStorage.getItem("upx-prefs") || "{}").theme; if (t) document.documentElement.dataset.theme = t; } catch (e) { /* first visit */ }</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -83,10 +84,18 @@ nav.bar{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top
 nav.bar div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
 nav.bar button{background:none;border:0;padding:12px 0 calc(14px + env(safe-area-inset-bottom));display:flex;justify-content:center;color:var(--mute);cursor:pointer}
 nav.bar button[aria-current=page]{color:var(--accent);box-shadow:inset 0 2px 0 var(--accent)}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.splash{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#15803D;color:#fff;transition:opacity .35s}
+.splash.gone{opacity:0;pointer-events:none}
+.splash img{width:76px;height:76px;border-radius:18px;box-shadow:0 0 0 2px rgba(255,255,255,.85),0 8px 24px rgba(0,0,0,.25)}
+.splash b{font-size:22px;letter-spacing:-.01em}.splash span{font-size:13px;color:rgba(255,255,255,.8)}
+.splash i{display:block;width:120px;height:3px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden;margin-top:6px}
+.splash i::after{content:"";display:block;width:40%;height:100%;border-radius:2px;background:#fff;animation:slide 1s ease-in-out infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.splash i::after{animation:none;width:100%}}
 </style>
 </head>
 <body>
+<div class="splash" id="splash" role="status" aria-label="Loading"><img src="icon.svg" alt=""><b>Paper Trader</b><span>Paper money · NSE</span><i></i></div>
 <div class="wrap">
 <header id="hdr"></header>
 <main id="main" aria-live="polite"></main>
@@ -648,6 +657,8 @@ async function load() {
     S.error = String(err);
   }
   render();
+  // the opening screen stays at least 2 seconds, then fades once the first page is drawn
+  setTimeout(() => { const sp = document.getElementById("splash"); sp.classList.add("gone"); setTimeout(() => sp.remove(), 400); }, Math.max(0, 2000 - performance.now()));
   try {
     const r = await fetch("data/stocks.json");
     if (r.ok) { const s = await r.json(); s.bySym = Object.fromEntries(s.stocks.map(x => [x.s, x])); S.stocks = s; render(); }

@@ -64,6 +64,9 @@ Every chart shows its value range on the left and dates below. Moving a finger o
 tapping it) draws a guide line with a dot on each line, the date on top, and every value at that day under the
 chart, highest first.
 
+The app is called Paper Trader. It opens on a green screen with the icon and name for at least 2 seconds,
+then fades once the first page is drawn.
+
 A card whose data does not exist yet stays hidden (no empty boxes). Where the cards get their data:
 
 | Card | From |
