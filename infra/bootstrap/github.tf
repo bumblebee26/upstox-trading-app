@@ -92,6 +92,11 @@ data "aws_iam_policy_document" "plan" {
     resources = ["${module.state_bucket.arn}/aws/terraform.tfstate"]
   }
   statement {
+    sid       = "ReadAppPages" # Terraform uploads the app's page files and must read them back to plan
+    actions   = ["s3:GetObject", "s3:GetObjectTagging"]
+    resources = [for f in ["index.html", "manifest.webmanifest", "icon.svg"] : "arn:aws:s3:::upx-app-${local.account_id}/app/${f}"]
+  }
+  statement {
     sid = "ReadOwnResources"
     actions = ["iam:Get*", "iam:List*", "lambda:GetFunction*", "lambda:GetPolicy", "lambda:ListVersionsByFunction",
       "lambda:ListTags", "lambda:GetRuntimeManagementConfig", "logs:ListTagsForResource", "logs:ListTagsLogGroup",

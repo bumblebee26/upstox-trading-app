@@ -9,10 +9,10 @@ name: Terraform
 
 on:
   pull_request:
-    paths: ["infra/**", "lambdas/**", "pipeline/**", "lakehouse/history_copy.py", ".github/workflows/terraform.yml"]
+    paths: ["infra/**", "app/**", "core/**", "trader/**", "lambdas/**", "pipeline/**", "lakehouse/history_copy.py", ".github/workflows/terraform.yml"]
   push:
     branches: [main]
-    paths: ["infra/**", "lambdas/**", "pipeline/**", "lakehouse/history_copy.py", ".github/workflows/terraform.yml"]
+    paths: ["infra/**", "app/**", "core/**", "trader/**", "lambdas/**", "pipeline/**", "lakehouse/history_copy.py", ".github/workflows/terraform.yml"]
   workflow_dispatch:
 
 permissions:
