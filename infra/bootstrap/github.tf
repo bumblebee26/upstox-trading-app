@@ -192,8 +192,16 @@ data "aws_iam_policy_document" "apply" {
   statement {
     sid       = "NeverDeleteTheBuckets"
     effect    = "Deny"
-    actions   = ["s3:DeleteBucket", "s3:DeleteBucketPolicy", "s3:PutBucketVersioning"]
+    actions   = ["s3:DeleteBucket", "s3:DeleteBucketPolicy"]
     resources = ["arn:aws:s3:::upx-*"]
+  }
+  # Versioning stays as it is on the buckets that hold data we can't rebuild (the trader's state, the Terraform
+  # state). A new bucket (like the app's, whose files are rebuilt on every export) can still turn it on.
+  statement {
+    sid       = "NeverChangeVersioningOnDataBuckets"
+    effect    = "Deny"
+    actions   = ["s3:PutBucketVersioning"]
+    resources = ["arn:aws:s3:::upx-state-*", "arn:aws:s3:::upx-tfstate-*"]
   }
 }
 
