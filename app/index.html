@@ -90,8 +90,12 @@ nav.bar button[aria-current=page]{color:var(--accent);box-shadow:inset 0 2px 0 v
 .splash b{font-size:22px;letter-spacing:-.01em}.splash span{font-size:13px;color:rgba(255,255,255,.8)}
 .splash i{display:block;width:120px;height:3px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden;margin-top:6px}
 .splash i::after{content:"";display:block;width:40%;height:100%;border-radius:2px;background:#fff;animation:slide 1s ease-in-out infinite}
+.splash img{animation:pop .6s cubic-bezier(.34,1.56,.64,1) both}
+.splash b,.splash span{animation:rise .45s ease-out .25s both}
+@keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+@keyframes rise{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}.splash i::after{animation:none;width:100%}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.splash i::after,.splash img,.splash b,.splash span{animation:none;width:auto}.splash i::after{width:100%}}
 </style>
 </head>
 <body>
