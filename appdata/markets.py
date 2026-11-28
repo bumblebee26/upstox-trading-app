@@ -10,11 +10,15 @@ A source that fails keeps its last good value and date.
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from core import http, ssm, upstox
 
 INDICES = {"nifty50": "NSE_INDEX|Nifty 50", "sensex": "BSE_INDEX|SENSEX", "vix": "NSE_INDEX|India VIX"}
+# World vs India chart (owner's choice, 28 Nov): five years of daily closes, all from Upstox.
+WORLD = {"Nifty 50": "NSE_INDEX|Nifty 50", "Sensex": "BSE_INDEX|SENSEX", "S&P 500": "GLOBAL_INDEX|^GSPC",
+         "Nasdaq 100": "GLOBAL_INDEX|IXIX", "Nikkei 225": "GLOBAL_INDEX|^N225", "Hang Seng": "GLOBAL_INDEX|^HSI",
+         "FTSE 100": "GLOBAL_INDEX|^FTSE"}
 FUEL = {"petrol": "petrol", "diesel": "diesel", "cng": "cng"}
 FUEL_URL = "https://upstox.com/{0}-price/{0}-price-in-mumbai/"
 IBJA_URL = "https://www.ibjarates.com/"
@@ -133,3 +137,18 @@ def rows(book):
                     "prev": b["prev"], "prev_as_of": b["prev_as_of"], "change": chg, "change_pct": pct,
                     "source": b["source"]})
     return out
+
+
+def world(today, candles=upstox.historical_candles, indices=WORLD):
+    """{days, series: {index: [close or None per day]}, failed}: markets close on different holidays, so
+    every index is lined up on one list of days (short for the phone to download)."""
+    start = date(today.year - 5, today.month, today.day if (today.month, today.day) != (2, 29) else 28)
+    closes, failed = {}, []
+    for name, key in indices.items():
+        try:
+            closes[name] = {r["ts"][:10]: r["close"] for r in candles(key, "days", 1, start, today)}
+        except Exception as err:  # noqa: BLE001 - one index failing leaves the others on the chart
+            print(f"world {name} failed: {err}")
+            failed.append(name)
+    days = sorted({d for c in closes.values() for d in c})
+    return {"days": days, "series": {n: [c.get(d) for d in days] for n, c in closes.items()}, "failed": failed}

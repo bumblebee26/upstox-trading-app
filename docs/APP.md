@@ -44,6 +44,12 @@ Each export writes:
 | Mumbai petrol, diesel, CNG | Upstox's Mumbai fuel pages | From the previous saved day |
 | Accenture (NYSE: ACN) | Massive, the last US close (key in `/upx/massive-api-key`) | From the previous saved day |
 
+**World vs India chart (Markets):** five years of daily closes for Nifty 50, Sensex, S&P 500, Nasdaq 100,
+Nikkei 225, Hang Seng and FTSE 100, all from Upstox (world indices use Upstox's `GLOBAL_INDEX` keys, served to
+the read-only Analytics token). Fetched fresh on every export, so nothing is stored. Each line shows its % change
+from the first day in view; the line under the chart compares Nifty 50 with the average of the five world
+indices. If every index fails, the last good copy stays.
+
 A first day shows no change. A source that fails keeps its last good value and its date. A scraped price more
 than 15% away from the last good one is treated as a misread page and ignored.
 

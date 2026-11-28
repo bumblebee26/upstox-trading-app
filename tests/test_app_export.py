@@ -58,9 +58,11 @@ class BuildTest(unittest.TestCase):
             return b"Company Name,Industry,Symbol,Series,ISIN Code\nState Bank of India,Financial Services,SBIN,EQ,INE062A01020\n"
         raise OSError("offline")
 
+    world = {"days": [], "series": {}, "failed": []}
+
     def run_once(self, day):
         return export.build(day, self.app, query=lambda text: [{"ok": 1}], fetch=self.fetch, trader=self.app,
-                            candles=lambda s, d: [],
+                            candles=lambda s, d: [], world=lambda day: self.world,
                             market_values=lambda: ({"petrol": {"value": 111.21, "as_of": day.isoformat(), "source": "Upstox"}}, ["cng"]))
 
     def test_writes_the_data_file_the_stock_list_and_the_market_book(self):
@@ -75,6 +77,15 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(listed["stocks"][0]["lot"], 750)
         self.assertEqual(listed["indices"]["Nifty 50"], ["SBIN"])
         self.assertIsNotNone(storage.get_json("history/markets/2026-11-28.json", store=self.app))
+
+    def test_world_chart_kept_from_the_last_run_when_every_index_fails(self):
+        self.world = {"days": ["2026-11-27"], "series": {"Nifty 50": [101.0]}, "failed": []}
+        self.run_once(date(2026, 11, 27))
+        self.world = {"days": [], "series": {}, "failed": ["Nifty 50"]}
+        self.run_once(date(2026, 11, 28))
+        desk = storage.get_json("app/data/desk.json", store=self.app)
+        self.assertEqual(desk["world"]["series"], {"Nifty 50": [101.0]})
+        self.assertIn("world: Nifty 50", desk["failed"])
 
     def test_the_stock_list_is_rebuilt_once_a_day(self):
         self.run_once(date(2026, 11, 28))
