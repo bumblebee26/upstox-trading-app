@@ -52,3 +52,11 @@ jobs:
 
       - name: Sync, run the pipeline and wait for it
         run: python -m lakehouse.sync
+
+      # The phone app's data: the datasets (appdata/queries), today's market values and the stock list. Runs
+      # even if a pipeline failed, so the market values still refresh; a failed dataset keeps its last rows.
+      - name: Build the app's data
+        if: always()
+        env:
+          UPX_APP_BUCKET: upx-app-538498973473
+        run: python -m appdata.export

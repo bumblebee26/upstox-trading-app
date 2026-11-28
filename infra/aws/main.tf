@@ -43,6 +43,17 @@ data "aws_iam_policy_document" "session" {
     actions   = ["s3:GetObject", "s3:PutObject"]
     resources = ["${module.state_bucket.arn}/*"]
   }
+  # The Lakehouse job's app export (appdata/export.py): the app's data, and a daily copy of the market values.
+  statement {
+    sid       = "ListAppBucket"
+    actions   = ["s3:ListBucket"]
+    resources = [module.app_bucket.arn]
+  }
+  statement {
+    sid       = "ReadWriteAppDataNoDelete"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${module.app_bucket.arn}/app/data/*", "${module.app_bucket.arn}/history/*"]
+  }
   statement {
     sid       = "ReadOwnSecrets"
     actions   = ["ssm:GetParameter", "ssm:GetParameters"]
