@@ -89,5 +89,24 @@ class ChangeTest(unittest.TestCase):
         self.assertEqual(markets.update(book, {"diesel": {"value": 9.783, "as_of": "2026-11-28", "source": "Upstox"}}), book)
 
 
+class WorldTest(unittest.TestCase):
+    def test_daily_closes_lined_up_on_one_list_of_days(self):
+        bars = {"NSE_INDEX|Nifty 50": [("2026-11-26", 100.0), ("2026-11-27", 101.25)],
+                "GLOBAL_INDEX|^GSPC": [("2026-11-25", 50.0), ("2026-11-27", 51.0)]}
+        calls = []
+
+        def candles(key, unit, interval, start, end):
+            calls.append((unit, interval, start, end))
+            if key not in bars:
+                raise RuntimeError("no data")
+            return [{"ts": d + "T00:00:00+05:30", "close": c} for d, c in bars[key]]
+
+        out = markets.world(date(2026, 11, 28), candles=candles, indices={"Nifty 50": "NSE_INDEX|Nifty 50", "S&P 500": "GLOBAL_INDEX|^GSPC", "Gone": "GLOBAL_INDEX|X"})
+        self.assertEqual(out["days"], ["2026-11-25", "2026-11-26", "2026-11-27"])
+        self.assertEqual(out["series"], {"Nifty 50": [None, 100.0, 101.25], "S&P 500": [50.0, None, 51.0]})
+        self.assertEqual(out["failed"], ["Gone"])  # one index failing leaves the others
+        self.assertEqual(calls[0], ("days", 1, date(2021, 11, 28), date(2026, 11, 28)))  # five years of daily closes
+
+
 if __name__ == "__main__":
     unittest.main()

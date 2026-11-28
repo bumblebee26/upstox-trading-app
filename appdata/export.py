@@ -57,7 +57,7 @@ def stock_file(day, app, fetch):
 
 
 def build(day, app, query=sql.query, fetch=http.request, market_values=markets.fetch_all, trader=None,
-          candles=state.upstox_candles):
+          candles=state.upstox_candles, world=markets.world):
     previous = storage.get_json(DESK, store=app)
     datasets, failed = run_queries(previous, query=query)
     closes = {r["symbol"]: r.get("close") for r in (datasets.get("eq_day") or {}).get("rows", []) if "symbol" in r}
@@ -77,9 +77,14 @@ def build(day, app, query=sql.query, fetch=http.request, market_values=markets.f
     except Exception as err:  # noqa: BLE001 - the stock list keeps yesterday's file
         print(f"stock list failed: {err}")
         index_failed = ["stock list"]
+    globe = world(day)  # world vs India chart; if every index fails, keep the last good copy
+    if not globe["series"]:
+        globe = {**((previous or {}).get("world") or {}), "failed": globe["failed"]}
+    failed += [f"world: {n}" for n in globe["failed"]]
     failed += [f"markets: {m}" for m in missing] + [f"index: {i}" for i in index_failed]
     payload = {"updated_at": datetime.now(IST).isoformat(timespec="seconds"), "datasets": datasets,
-               "markets": markets.rows(book), "pools": pools, "charts": charts, "failed": failed}
+               "markets": markets.rows(book), "pools": pools, "charts": charts,
+               "world": {"days": globe.get("days", []), "series": globe.get("series", {})}, "failed": failed}
     storage.put_json(DESK, payload, store=app)
     return {"datasets": len(datasets), "markets": len(payload["markets"]), "failed": failed}
 

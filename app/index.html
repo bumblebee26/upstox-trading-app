@@ -160,17 +160,22 @@ function hero(label, value, chg, chgPct, sub) {
 
 // ---- Charts: ‹ Bar › (Bar, Line, Area) and ‹ 1M › (range); folded legend; tap to read -------------------------
 const RANGES = ["1D", "1W", "1M", "3M", "6M", "1Y", "All"], RDAYS = {"1D": 1, "1W": 7, "1M": 31, "3M": 92, "6M": 183, "1Y": 366, "All": 1e5};
-const COLORS = ["#2563EB", "#D97706", "#7C3AED", "#0891B2", "#DB2777", "#65A30D", "#DC2626", "#0D9488"];
+const COLORS = ["#2563EB", "#D97706", "#7C3AED", "#0891B2", "#DB2777", "#64748B", "#DC2626", "#0D9488"];
 const CH = {};
-function chart(id, title, series, unit, defaultRange = "1M", top = "") {
-  // series: [{name, pts: [[day, value]], real, dash}]; values are ₹ or % (unit)
+function chart(id, title, series, unit, defaultRange = "1M", top = "", rebase = false) {
+  // series: [{name, pts: [[day, value]], real, dash, home}]; values are ₹ or % (unit).
+  // rebase: show each line as its % change from the first day in view (prices on different scales).
   if (!series.some(s => s.pts.length)) return "";
+  if (rebase && (P.sw || {})[id + ":k"] == null) { P.sw = P.sw || {}; P.sw[id + ":k"] = 1; }  // starts as Line
   const [kSw, kind] = sw(id + ":k", ["Bar", "Line", "Area"]);
   const ri = (P.sw || {})[id + ":r"]; if (ri == null) { P.sw = P.sw || {}; P.sw[id + ":r"] = RANGES.indexOf(defaultRange); }
   const [rSw, range] = sw(id + ":r", RANGES);
   const end = series.reduce((m, s) => s.pts.length && s.pts[s.pts.length - 1][0] > m ? s.pts[s.pts.length - 1][0] : m, "");
   const from = new Date(new Date(end).getTime() - RDAYS[range] * 864e5).toISOString().slice(0, 10);
   const shown = series.map((s, i) => ({...s, color: s.real ? "var(--accent)" : COLORS[i % COLORS.length], pts: s.pts.filter(p => p[0] > from || range === "1D" && p[0] >= end)}));
+  if (rebase) shown.forEach(s => { const b = s.pts.length && s.pts[0][1]; s.pts = b ? s.pts.map(p => [p[0], (p[1] / b - 1) * 100]) : []; });
+  const last = s => s.pts.length ? s.pts[s.pts.length - 1][1] : null, others = shown.filter(s => !s.home && last(s) != null);  // home: the lines being compared (India here)
+  const read = rebase && shown.find(s => s.real) && others.length ? note(`${esc(shown.find(s => s.real).name)} ${pct(last(shown.find(s => s.real)))} vs world average ${pct(others.reduce((t, s) => t + last(s), 0) / others.length)}.`) : "";
   const days = [...new Set(shown.flatMap(s => s.pts.map(p => p[0])))].sort();
   if (!days.length) return "";
   const vals = shown.flatMap(s => s.pts.map(p => p[1])).concat([0]);
@@ -192,7 +197,7 @@ function chart(id, title, series, unit, defaultRange = "1M", top = "") {
   });
   CH[id] = {days, shown, unit, W, x};
   const legend = shown.length > 1 ? `<details class="lgd"${S.open["lg:" + id] ? " open" : ""} data-lgd="${id}"><summary>Legend (${shown.length}) ▾</summary>${shown.map(s => `<button class="lg" data-hl="${id}" data-name="${esc(s.name)}" aria-pressed="${hl === s.name}"><i style="background:${s.color}"></i>${esc(s.name)}</button>`).join("")}</details>` : "";
-  return card(title, `${top}<div class="cw"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-chart="${id}" role="img" aria-label="${esc(title)} chart; tap to read values">${svg}</svg><div class="tip" id="tip-${id}" hidden></div></div>${legend}`, `<span>${kSw}&nbsp;${rSw}</span>`);
+  return card(title, `${top}<div class="cw"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-chart="${id}" role="img" aria-label="${esc(title)} chart; tap to read values">${svg}</svg><div class="tip" id="tip-${id}" hidden></div></div>${read}${legend}`, `<span>${kSw}&nbsp;${rSw}</span>`);
 }
 function readChart(id, evt) {
   const c = CH[id], svg = evt.currentTarget, tip = document.getElementById("tip-" + id);
@@ -417,6 +422,9 @@ function marketsTab() {
   const eq = ds("eq_day"), up = eq.filter(r => r.change_pct > 0).length, dn = eq.filter(r => r.change_pct < 0).length;
   let h = card("India", tiles([t("nifty50"), t("sensex"), t("vix"), eq.length ? tile("Breadth (all NSE)", `${num(up)}↑ ${num(dn)}↓`, up >= dn ? "more up" : "more down", up >= dn ? "up" : "dn") : ""].filter(Boolean), 2), m("nifty50") ? `<span class="lbl">${dm(m("nifty50").as_of)}</span>` : "");
   const read = todaysRead();
+  const w = (S.data && S.data.world) || {};
+  if ((w.days || []).length) h += chart("world", "World vs India", Object.entries(w.series || {}).map(([name, v]) => ({name, real: name === "Nifty 50", dash: name === "Sensex", home: name === "Nifty 50" || name === "Sensex",
+    pts: v.map((c, i) => [w.days[i], c]).filter(p => p[1] != null)})).filter(x => x.pts.length), "%", "1Y", "", true);
   if (read) h += card("Today's read", note(read));
   const sec = sectors();
   if (sec.length) {
