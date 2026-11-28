@@ -513,7 +513,7 @@ function exploreTab() {
   if (S.page) return explorePage();
   let h = searchBox();
   const recent = P.recent || [];
-  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(x => { const st = stockOf(x); return st ? `<a class="chip" href="${esc(st.u)}" target="_blank" rel="noopener" data-viewed="${esc(x)}">${esc(x)}</a>` : ""; }).join("")}</div>`);
+  if (recent.length) h += card("Recently viewed", `<div class="chips">${recent.map(x => { const st = stockOf(x); return st ? `<a class="chip" href="${esc(st.u)}" target="_blank" rel="noopener" data-viewed="${esc(x)}">${esc(x)}</a>` : ""; }).join("")}</div>`, `<button class="sw" data-clearrecent="1" aria-label="Clear recently viewed">✕ Clear</button>`);
   const ix = S.stocks.indices || {}, names = Object.keys(ix);
   if (names.length) h += card("By index", `<div class="chips">${names.map(n => `<button class="chip" data-open="index" data-name="${esc(n)}">${esc(n)} <span class="mute">${ix[n].length}</span></button>`).join("")}</div>`);
   const sec = sectors();
@@ -600,6 +600,7 @@ document.addEventListener("click", e => {
   if (!t) { if (S.q) { S.q = ""; render(); } return; }
   const d = t.dataset;
   if (t.matches("svg[data-chart]")) return readChart(d.chart, e);
+  if (d.clearrecent) { P.recent = []; save(); return render(); }
   if (d.viewed) { P.recent = [d.viewed].concat((P.recent || []).filter(s => s !== d.viewed)).slice(0, 10); save(); return; }
   if (t.tagName === "A") return;
   if (t.id === "theme") { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; P.theme = dark ? "dark" : "light"; save(); return render(); }
