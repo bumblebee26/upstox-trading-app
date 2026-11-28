@@ -60,6 +60,10 @@ Explore, and Ratings and Performance, in the order of the approved layout. The p
 tab, every ‹ › switch and the chart choices; it also keeps the last data it loaded, so the app opens offline with
 a note saying which copy it shows.
 
+Every chart shows its value range on the left and dates below. Moving a finger or the mouse over a chart (or
+tapping it) draws a guide line with a dot on each line, the date on top, and every value at that day under the
+chart, highest first.
+
 A card whose data does not exist yet stays hidden (no empty boxes). Where the cards get their data:
 
 | Card | From |

@@ -59,7 +59,15 @@ main{padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;padding-bot
 .chip[aria-pressed=true]{border-color:var(--accent);background:var(--card)}
 .note{margin:0;font-size:13px;color:var(--mute);line-height:1.45}
 .cw{position:relative}
-.cw svg{display:block;width:100%;height:160px;border-radius:8px;background:var(--tile)}
+.cw svg{display:block;width:100%;height:160px;border-radius:8px;background:var(--tile);touch-action:pan-y}
+.ya{position:absolute;left:4px;top:0;transform:translateY(-50%);font-size:10px;color:var(--mute);pointer-events:none;background:color-mix(in srgb,var(--tile) 80%,transparent);padding:0 2px;border-radius:3px}
+.xa{display:flex;justify-content:space-between;font-size:10px;color:var(--mute);margin-top:3px}
+.ov{position:absolute;inset:0;pointer-events:none}
+.gl{position:absolute;top:0;bottom:0;width:1px;background:var(--mute);opacity:.6}
+.dot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;border:2px solid var(--card)}
+.gd{position:absolute;top:0;font-size:10px;font-weight:700;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:0 5px;white-space:nowrap}
+.rd{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-size:12px;padding:6px 2px 0}
+.tl{display:flex;align-items:center;gap:5px;white-space:nowrap}.tl i{width:8px;height:3px;border-radius:2px}.tl b{margin-left:auto;padding-left:10px}
 .tip{position:absolute;top:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:12px;line-height:1.35;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.12);max-width:70%}
 details.lgd summary{min-height:36px;display:flex;align-items:center;font-size:13px;font-weight:600;color:var(--mute);cursor:pointer;list-style:none}
 details.lgd summary::-webkit-details-marker{display:none}
@@ -180,7 +188,7 @@ function chart(id, title, series, unit, defaultRange = "1M", top = "", rebase = 
   if (!days.length) return "";
   const vals = shown.flatMap(s => s.pts.map(p => p[1])).concat([0]);
   let lo = Math.min(...vals), hi = Math.max(...vals); if (hi === lo) { hi += 1; lo -= 1; }
-  const W = 340, H = 150, pad = 8, x = i => days.length === 1 ? W / 2 : pad + i * (W - 2 * pad) / (days.length - 1), y = v => H - pad - (v - lo) * (H - 2 * pad) / (hi - lo);
+  const W = 340, H = 150, pad = 14, x = i => days.length === 1 ? W / 2 : pad + i * (W - 2 * pad) / (days.length - 1), y = v => H - pad - (v - lo) * (H - 2 * pad) / (hi - lo);
   const hl = (P.hl || {})[id];
   let svg = `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-width="1"/>`;
   const barOf = kind === "Bar" ? (shown.find(x => x.real) || shown[0]) : null;  // Bar: the main line as bars, the rest as lines
@@ -195,19 +203,27 @@ function chart(id, title, series, unit, defaultRange = "1M", top = "", rebase = 
     if (kind === "Area") svg += `<polygon points="${x(idx.get(s.pts[0][0]))},${y(lo)} ${pts} ${x(idx.get(s.pts[s.pts.length - 1][0]))},${y(lo)}" fill="${s.color}" opacity="${0.12 * dim}"/>`;
     svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.real ? 2.5 : 1.6}" ${s.dash ? 'stroke-dasharray="5 4"' : ""} opacity="${dim}" stroke-linejoin="round"/>`;
   });
-  CH[id] = {days, shown, unit, W, x};
+  CH[id] = {days, shown, unit, W, H, x, y};
+  // axis values as page text (the drawing stretches to the card width, so text inside it would stretch too)
+  const ax = v => unit === "%" ? pct(v, Math.abs(hi - lo) < 10 ? 1 : 0) : srs(v), at = v => (y(v) / H * 100).toFixed(1) + "%";
+  const long = days.length > 1 && (new Date(days[days.length - 1]) - new Date(days[0])) > 400 * 864e5;
+  const dl = d => dm(d) + (long ? " '" + d.slice(2, 4) : "");
+  const yAxis = [hi, (hi + lo) / 2, lo].map(v => `<span class="ya" style="top:${at(v)}">${ax(v)}</span>`).join("");
+  const xAxis = `<div class="xa"><span>${dl(days[0])}</span>${days.length > 2 ? `<span>${dl(days[Math.floor(days.length / 2)])}</span>` : ""}${days.length > 1 ? `<span>${dl(days[days.length - 1])}</span>` : ""}</div>`;
   const legend = shown.length > 1 ? `<details class="lgd"${S.open["lg:" + id] ? " open" : ""} data-lgd="${id}"><summary>Legend (${shown.length}) ▾</summary>${shown.map(s => `<button class="lg" data-hl="${id}" data-name="${esc(s.name)}" aria-pressed="${hl === s.name}"><i style="background:${s.color}"></i>${esc(s.name)}</button>`).join("")}</details>` : "";
-  return card(title, `${top}<div class="cw"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-chart="${id}" role="img" aria-label="${esc(title)} chart; tap to read values">${svg}</svg><div class="tip" id="tip-${id}" hidden></div></div>${read}${legend}`, `<span>${kSw}&nbsp;${rSw}</span>`);
+  return card(title, `${top}<div class="cw"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-chart="${id}" role="img" aria-label="${esc(title)} chart; tap to read values">${svg}</svg>${yAxis}<div class="ov" id="ov-${id}"></div></div>${xAxis}<div class="rd" id="tip-${id}" hidden></div>${read}${legend}`, `<span>${kSw}&nbsp;${rSw}</span>`);
 }
-function readChart(id, evt) {
-  const c = CH[id], svg = evt.currentTarget, tip = document.getElementById("tip-" + id);
-  if (!c || !tip) return;
+function readChart(id, evt) {  // a guide line at the nearest day, a dot on each line, and every value there
+  const c = CH[id], svg = document.querySelector(`svg[data-chart="${id}"]`), tip = document.getElementById("tip-" + id), ov = document.getElementById("ov-" + id);
+  if (!c || !svg || !tip || !ov) return;
   const r = svg.getBoundingClientRect(), px = (evt.clientX - r.left) / r.width * c.W;
   let best = 0; c.days.forEach((d, i) => { if (Math.abs(c.x(i) - px) < Math.abs(c.x(best) - px)) best = i; });
-  const day = c.days[best], fmt = v => c.unit === "%" ? pct(v) : srs(v);
-  const lines = c.shown.map(s => { const p = s.pts.find(q => q[0] === day); return p ? `${esc(s.name)}: <b>${fmt(p[1])}</b>` : ""; }).filter(Boolean);
-  tip.innerHTML = `<b>${dm(day)}</b><br>${lines.slice(0, 8).join("<br>")}`;
-  tip.hidden = false; tip.style.left = Math.min(r.width * 0.55, Math.max(0, evt.clientX - r.left - 40)) + "px";
+  const day = c.days[best], fmt = v => c.unit === "%" ? pct(v) : srs(v), left = c.x(best) / c.W * 100;
+  const at = c.shown.map(s => ({s, p: s.pts.find(q => q[0] === day)})).filter(o => o.p).sort((a, b) => b.p[1] - a.p[1]);
+  ov.innerHTML = `<i class="gl" style="left:${left}%"></i>` + at.map(o => `<i class="dot" style="left:${left}%;top:${c.y(o.p[1]) / c.H * 100}%;background:${o.s.color}"></i>`).join("");
+  ov.innerHTML += `<span class="gd" style="left:${left}%;transform:translateX(${left > 80 ? -100 : left < 20 ? 0 : -50}%)">${dm(day)}</span>`;
+  tip.innerHTML = at.map(o => `<div class="tl"><i style="background:${o.s.color}"></i>${esc(o.s.name)}<b>${fmt(o.p[1])}</b></div>`).join("");
+  tip.hidden = false;  // the values sit under the chart so they never hide the lines
 }
 const cumulative = rows => { let t = 0; return rows.map(([d, v]) => [d, t += v]); };
 
@@ -595,6 +611,7 @@ function render() {
 }
 
 // ---- Events --------------------------------------------------------------------------------------------------
+document.addEventListener("pointermove", e => { const t = e.target.closest && e.target.closest("svg[data-chart]"); if (t) readChart(t.dataset.chart, e); });
 document.addEventListener("click", e => {
   const t = e.target.closest("button, a, svg[data-chart]");
   if (!t) { if (S.q) { S.q = ""; render(); } return; }
